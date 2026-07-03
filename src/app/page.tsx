@@ -3,6 +3,7 @@
 import { useState } from "react";
 import dynamic from "next/dynamic";
 import RoomSizeForm, { type RoomSize } from "@/components/RoomSizeForm";
+import FurnitureSearchPanel from "@/components/FurnitureSearchPanel";
 
 // Konva はブラウザの canvas API に依存するため SSR を無効化する
 const RoomCanvas = dynamic(() => import("@/components/RoomCanvas"), {
@@ -20,8 +21,13 @@ export default function Home() {
   return (
     <main className="flex min-h-screen flex-col items-center gap-6 bg-stone-100 p-8">
       <h1 className="text-2xl font-bold text-stone-800">家具配置シミュレーター</h1>
-      <RoomSizeForm value={roomSize} onChange={setRoomSize} />
-      <RoomCanvas widthCm={roomSize.widthCm} depthCm={roomSize.depthCm} />
+      <div className="flex flex-wrap justify-center gap-8">
+        <div className="flex flex-col items-center gap-6">
+          <RoomSizeForm value={roomSize} onChange={setRoomSize} />
+          <RoomCanvas widthCm={roomSize.widthCm} depthCm={roomSize.depthCm} />
+        </div>
+        <FurnitureSearchPanel />
+      </div>
     </main>
   );
 }
