@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import RoomSizeForm, { type RoomSize } from "@/components/RoomSizeForm";
 import FurnitureSearchPanel, { type FurnitureItem } from "@/components/FurnitureSearchPanel";
@@ -47,9 +47,41 @@ const RoomCanvas = dynamic(() => import("@/components/RoomCanvas"), {
   ),
 });
 
+const STORAGE_KEY = "ailayout-state";
+
 export default function Home() {
   const [roomSize, setRoomSize] = useState<RoomSize>({ widthCm: 360, depthCm: 270 });
   const [placedItems, setPlacedItems] = useState<PlacedItem[]>([]);
+  // localStorage 読み込み完了フラグ（読み込み前の初期値で保存して上書きしないため）
+  const [loaded, setLoaded] = useState(false);
+
+  // 初回マウント時に保存済みデータを復元
+  // （SSRとのハイドレーション不一致を避けるため、意図的にマウント後に反映する）
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        const saved = JSON.parse(raw);
+        if (saved.roomSize) setRoomSize(saved.roomSize);
+        if (Array.isArray(saved.placedItems)) setPlacedItems(saved.placedItems);
+      }
+    } catch {
+      // 壊れたデータは無視して初期状態で始める
+    }
+    setLoaded(true);
+  }, []);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
+  // 変更のたびに保存（リロードしても残る）
+  useEffect(() => {
+    if (!loaded) return;
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ roomSize, placedItems }));
+    } catch {
+      // 保存に失敗しても致命的ではないので無視
+    }
+  }, [roomSize, placedItems, loaded]);
 
   const handlePlace = (item: FurnitureItem, keyword: string) => {
     // サイズが分かる家具だけ配置できる（実寸で描くため）
