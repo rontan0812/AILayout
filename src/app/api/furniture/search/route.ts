@@ -7,6 +7,9 @@ import { z } from "zod";
 const RAKUTEN_API_URL =
   "https://openapi.rakuten.co.jp/ichibams/api/IchibaItem/Search/20260401";
 
+// サイズ抽出（LLM）は数十秒かかることがあるため、関数の実行時間上限を延ばす。
+export const maxDuration = 60;
+
 type RakutenItem = {
   itemCode: string;
   itemName: string;
@@ -52,28 +55,34 @@ async function extractSizes(
     caption: item.itemCaption.slice(0, 500),
   }));
 
-  const response = await client.messages.parse({
-    model: "claude-opus-4-8",
-    max_tokens: 16000,
-    thinking: { type: "adaptive" },
-    system:
-      "あなたは家具ECサイトの商品情報からサイズを抽出するアシスタントです。" +
-      "各商品の名前と説明文から、設置時の床面占有サイズである「幅（横方向）」と「奥行」をセンチメートル単位で抽出してください。" +
-      "mm表記はcmに換算してください。高さは不要です。" +
-      "サイズが読み取れない場合は null にしてください。推測で値を作らないでください。",
-    messages: [
-      {
-        role: "user",
-        content: JSON.stringify(input),
+  // サイズ抽出が失敗しても検索全体は成立させたいので、ここで例外を握りつぶし
+  // 空の結果（＝UI側で「サイズ不明」）にフォールバックする。
+  try {
+    const response = await client.messages.parse({
+      model: "claude-opus-4-8",
+      max_tokens: 16000,
+      thinking: { type: "adaptive" },
+      system:
+        "あなたは家具ECサイトの商品情報からサイズを抽出するアシスタントです。" +
+        "各商品の名前と説明文から、設置時の床面占有サイズである「幅（横方向）」と「奥行」をセンチメートル単位で抽出してください。" +
+        "mm表記はcmに換算してください。高さは不要です。" +
+        "サイズが読み取れない場合は null にしてください。推測で値を作らないでください。",
+      messages: [
+        {
+          role: "user",
+          content: JSON.stringify(input),
+        },
+      ],
+      output_config: {
+        format: zodOutputFormat(SizeExtraction),
       },
-    ],
-    output_config: {
-      format: zodOutputFormat(SizeExtraction),
-    },
-  });
+    });
 
-  for (const entry of response.parsed_output?.items ?? []) {
-    sizes.set(entry.index, { widthCm: entry.widthCm, depthCm: entry.depthCm });
+    for (const entry of response.parsed_output?.items ?? []) {
+      sizes.set(entry.index, { widthCm: entry.widthCm, depthCm: entry.depthCm });
+    }
+  } catch (err) {
+    console.error("サイズ抽出に失敗しました:", err);
   }
   return sizes;
 }
@@ -120,45 +129,55 @@ export async function GET(request: Request) {
   // デプロイ先のオリジンを使う（環境変数で上書き可能）。
   const origin = process.env.RAKUTEN_APP_URL ?? new URL(request.url).origin;
 
-  const rakutenRes = await fetch(`${RAKUTEN_API_URL}?${params.toString()}`, {
-    headers: {
-      accessKey,
-      Origin: origin,
-      Referer: `${origin}/`,
-    },
-  });
-  if (!rakutenRes.ok) {
-    const body = await rakutenRes.text();
+  try {
+    const rakutenRes = await fetch(`${RAKUTEN_API_URL}?${params.toString()}`, {
+      headers: {
+        accessKey,
+        Origin: origin,
+        Referer: `${origin}/`,
+      },
+    });
+    if (!rakutenRes.ok) {
+      const body = await rakutenRes.text();
+      return Response.json(
+        { error: `楽天APIエラー (${rakutenRes.status}): ${body.slice(0, 200)}` },
+        { status: 502 }
+      );
+    }
+
+    const data = (await rakutenRes.json()) as { Items?: RakutenItem[] };
+    const rakutenItems = data.Items ?? [];
+
+    const sizes = await extractSizes(rakutenItems);
+
+    let items: FurnitureItem[] = rakutenItems.map((item, index) => ({
+      id: item.itemCode,
+      name: item.itemName,
+      price: item.itemPrice,
+      url: item.itemUrl,
+      imageUrl: item.mediumImageUrls?.[0] ?? null,
+      widthCm: sizes.get(index)?.widthCm ?? null,
+      depthCm: sizes.get(index)?.depthCm ?? null,
+    }));
+
+    // サイズ上限フィルタ: サイズ不明の商品は残す（UI側で「サイズ不明」と表示）
+    const maxWidthNum = maxWidth ? Number(maxWidth) : null;
+    const maxDepthNum = maxDepth ? Number(maxDepth) : null;
+    if (maxWidthNum) {
+      items = items.filter((i) => i.widthCm === null || i.widthCm <= maxWidthNum);
+    }
+    if (maxDepthNum) {
+      items = items.filter((i) => i.depthCm === null || i.depthCm <= maxDepthNum);
+    }
+
+    return Response.json({ items });
+  } catch (err) {
+    // 想定外の例外でも必ずJSONを返す（フロントの res.json() が壊れないように）
+    console.error("家具検索に失敗しました:", err);
+    const message = err instanceof Error ? err.message : "不明なエラー";
     return Response.json(
-      { error: `楽天APIエラー (${rakutenRes.status}): ${body.slice(0, 200)}` },
-      { status: 502 }
+      { error: `検索処理でエラーが発生しました: ${message}` },
+      { status: 500 }
     );
   }
-
-  const data = (await rakutenRes.json()) as { Items?: RakutenItem[] };
-  const rakutenItems = data.Items ?? [];
-
-  const sizes = await extractSizes(rakutenItems);
-
-  let items: FurnitureItem[] = rakutenItems.map((item, index) => ({
-    id: item.itemCode,
-    name: item.itemName,
-    price: item.itemPrice,
-    url: item.itemUrl,
-    imageUrl: item.mediumImageUrls?.[0] ?? null,
-    widthCm: sizes.get(index)?.widthCm ?? null,
-    depthCm: sizes.get(index)?.depthCm ?? null,
-  }));
-
-  // サイズ上限フィルタ: サイズ不明の商品は残す（UI側で「サイズ不明」と表示）
-  const maxWidthNum = maxWidth ? Number(maxWidth) : null;
-  const maxDepthNum = maxDepth ? Number(maxDepth) : null;
-  if (maxWidthNum) {
-    items = items.filter((i) => i.widthCm === null || i.widthCm <= maxWidthNum);
-  }
-  if (maxDepthNum) {
-    items = items.filter((i) => i.depthCm === null || i.depthCm <= maxDepthNum);
-  }
-
-  return Response.json({ items });
 }
