@@ -2,8 +2,10 @@ import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 
+// 楽天は2026年にAPIを移行。ドメインが openapi.rakuten.co.jp になり、
+// applicationId に加えて accessKey（ヘッダー）と Origin/Referer が必須になった。
 const RAKUTEN_API_URL =
-  "https://app.rakuten.co.jp/services/api/IchibaItem/Search/20220601";
+  "https://openapi.rakuten.co.jp/ichibams/api/IchibaItem/Search/20260401";
 
 type RakutenItem = {
   itemCode: string;
@@ -90,7 +92,15 @@ export async function GET(request: Request) {
   const appId = process.env.RAKUTEN_APP_ID;
   if (!appId) {
     return Response.json(
-      { error: "RAKUTEN_APP_ID が設定されていません。.env.local に楽天アプリIDを設定してください。" },
+      { error: "RAKUTEN_APP_ID が設定されていません。楽天アプリのアプリケーションIDを設定してください。" },
+      { status: 500 }
+    );
+  }
+
+  const accessKey = process.env.RAKUTEN_ACCESS_KEY;
+  if (!accessKey) {
+    return Response.json(
+      { error: "RAKUTEN_ACCESS_KEY が設定されていません。楽天アプリのアクセスキーを設定してください。" },
       { status: 500 }
     );
   }
@@ -106,7 +116,17 @@ export async function GET(request: Request) {
     params.set("maxPrice", maxPrice);
   }
 
-  const rakutenRes = await fetch(`${RAKUTEN_API_URL}?${params.toString()}`);
+  // 新APIは Origin/Referer が登録アプリURLと一致することを要求する。
+  // デプロイ先のオリジンを使う（環境変数で上書き可能）。
+  const origin = process.env.RAKUTEN_APP_URL ?? new URL(request.url).origin;
+
+  const rakutenRes = await fetch(`${RAKUTEN_API_URL}?${params.toString()}`, {
+    headers: {
+      accessKey,
+      Origin: origin,
+      Referer: `${origin}/`,
+    },
+  });
   if (!rakutenRes.ok) {
     const body = await rakutenRes.text();
     return Response.json(
