@@ -6,6 +6,36 @@ import RoomSizeForm, { type RoomSize } from "@/components/RoomSizeForm";
 import FurnitureSearchPanel, { type FurnitureItem } from "@/components/FurnitureSearchPanel";
 import type { PlacedItem } from "@/components/RoomCanvas";
 
+// 既存の家具と重ならない配置位置（cm）を探す。空きが無ければ左上へ。
+function findFreePosition(
+  items: PlacedItem[],
+  roomW: number,
+  roomD: number,
+  itemW: number,
+  itemD: number
+): { x: number; y: number } {
+  const cols = Math.max(1, Math.floor(roomW / itemW));
+  const rows = Math.max(1, Math.floor(roomD / itemD));
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const x = c * itemW;
+      const y = r * itemD;
+      if (x + itemW > roomW || y + itemD > roomD) continue;
+      const hit = items.some(
+        (i) =>
+          !(
+            x + itemW <= i.xCm ||
+            x >= i.xCm + i.widthCm ||
+            y + itemD <= i.yCm ||
+            y >= i.yCm + i.depthCm
+          )
+      );
+      if (!hit) return { x, y };
+    }
+  }
+  return { x: 0, y: 0 };
+}
+
 // Konva はブラウザの canvas API に依存するため SSR を無効化する
 const RoomCanvas = dynamic(() => import("@/components/RoomCanvas"), {
   ssr: false,
@@ -23,18 +53,29 @@ export default function Home() {
   const handlePlace = (item: FurnitureItem) => {
     // サイズが分かる家具だけ配置できる（実寸で描くため）
     if (item.widthCm === null || item.depthCm === null) return;
-    setPlacedItems((prev) => [
-      ...prev,
-      {
-        uid: crypto.randomUUID(),
-        name: item.name,
-        price: item.price,
-        widthCm: item.widthCm as number,
-        depthCm: item.depthCm as number,
-        xCm: 0,
-        yCm: 0,
-      },
-    ]);
+    const widthCm = item.widthCm;
+    const depthCm = item.depthCm;
+    setPlacedItems((prev) => {
+      const { x, y } = findFreePosition(
+        prev,
+        roomSize.widthCm,
+        roomSize.depthCm,
+        widthCm,
+        depthCm
+      );
+      return [
+        ...prev,
+        {
+          uid: crypto.randomUUID(),
+          name: item.name,
+          price: item.price,
+          widthCm,
+          depthCm,
+          xCm: x,
+          yCm: y,
+        },
+      ];
+    });
   };
 
   const handleMove = (uid: string, xCm: number, yCm: number) => {
