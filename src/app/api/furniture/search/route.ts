@@ -106,9 +106,11 @@ export async function GET(request: Request) {
     });
     if (!rakutenRes.ok) {
       const body = await rakutenRes.text();
+      // レート制限(429)はそのままのステータスで返し、呼び出し側がリトライできるようにする
+      const status = rakutenRes.status === 429 ? 429 : 502;
       return Response.json(
         { error: `楽天APIエラー (${rakutenRes.status}): ${body.slice(0, 200)}` },
-        { status: 502 }
+        { status }
       );
     }
 
