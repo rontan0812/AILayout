@@ -8,6 +8,20 @@ const MAX_WIDTH = 700;
 const ASPECT = 500 / 700; // 高さ / 幅
 const PADDING_RATIO = 50 / 700;
 
+// 2つの矩形（cm座標）が重なっているか判定する
+function rectsOverlap(
+  ax: number,
+  ay: number,
+  aw: number,
+  ah: number,
+  bx: number,
+  by: number,
+  bw: number,
+  bh: number
+): boolean {
+  return !(ax + aw <= bx || ax >= bx + bw || ay + ah <= by || ay >= by + bh);
+}
+
 // 部屋に配置した家具1つ分。位置は部屋の左上を原点とした cm 座標で保持する
 // （キャンバスのリサイズでズレないように）。
 export type PlacedItem = {
@@ -127,11 +141,31 @@ export default function RoomCanvas({
                       })}
                       onDragEnd={(e: Konva.KonvaEventObject<DragEvent>) => {
                         const node = e.target;
-                        onMove(
-                          item.uid,
-                          (node.x() - roomX) / scale,
-                          (node.y() - roomY) / scale
+                        const candXCm = (node.x() - roomX) / scale;
+                        const candYCm = (node.y() - roomY) / scale;
+                        // 他の家具と重なる位置に置いたら元の位置へ戻す
+                        const hit = placedItems.some(
+                          (o) =>
+                            o.uid !== item.uid &&
+                            rectsOverlap(
+                              candXCm,
+                              candYCm,
+                              item.widthCm,
+                              item.depthCm,
+                              o.xCm,
+                              o.yCm,
+                              o.widthCm,
+                              o.depthCm
+                            )
                         );
+                        if (hit) {
+                          node.position({
+                            x: roomX + clampedXCm * scale,
+                            y: roomY + clampedYCm * scale,
+                          });
+                        } else {
+                          onMove(item.uid, candXCm, candYCm);
+                        }
                       }}
                       onDblClick={() => onRemove(item.uid)}
                       onDblTap={() => onRemove(item.uid)}
