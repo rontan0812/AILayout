@@ -1,14 +1,7 @@
-import Anthropic from "@anthropic-ai/sdk";
-import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
-import { z } from "zod";
-
 // 楽天は2026年にAPIを移行。ドメインが openapi.rakuten.co.jp になり、
 // applicationId に加えて accessKey（ヘッダー）と Origin/Referer が必須になった。
 const RAKUTEN_API_URL =
   "https://openapi.rakuten.co.jp/ichibams/api/IchibaItem/Search/20260401";
-
-// サイズ抽出（LLM）は数十秒かかることがあるため、関数の実行時間上限を延ばす。
-export const maxDuration = 60;
 
 type RakutenItem = {
   itemCode: string;
@@ -29,62 +22,36 @@ export type FurnitureItem = {
   depthCm: number | null;
 };
 
-const SizeExtraction = z.object({
-  items: z.array(
-    z.object({
-      index: z.number(),
-      widthCm: z.number().nullable(),
-      depthCm: z.number().nullable(),
-    })
-  ),
-});
+// 単位付きの数値を cm に換算する（mm 表記のみ 1/10）。現実的な家具サイズの範囲外は無視。
+function toCm(value: string, unit: string | undefined): number | null {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return null;
+  const cm = /mm|ミリ/i.test(unit ?? "") ? n / 10 : n;
+  return cm >= 1 && cm <= 1000 ? Math.round(cm) : null;
+}
 
-async function extractSizes(
-  items: RakutenItem[]
-): Promise<Map<number, { widthCm: number | null; depthCm: number | null }>> {
-  const sizes = new Map<number, { widthCm: number | null; depthCm: number | null }>();
-  if (!process.env.ANTHROPIC_API_KEY || items.length === 0) {
-    return sizes;
-  }
+// 商品名・説明文から幅（横）と奥行を抽出する。LLMを使わず正規表現で拾う。
+function parseSizes(text: string): { widthCm: number | null; depthCm: number | null } {
+  const t = text.replace(/\s+/g, " ");
+  const unit = "(mm|cm|センチ|㎝|ミリ)?";
+  const num = "(\\d+(?:\\.\\d+)?)";
 
-  const client = new Anthropic();
-  const input = items.map((item, index) => ({
-    index,
-    name: item.itemName,
-    // 説明文は長いので抽出に十分な範囲に切り詰める
-    caption: item.itemCaption.slice(0, 500),
-  }));
+  const widthMatch = t.match(new RegExp(`(?:幅|横|ワイド|W)\\s*[:：]?\\s*約?\\s*${num}\\s*${unit}`, "i"));
+  const depthMatch = t.match(new RegExp(`(?:奥行き?|奥ゆき|デプス|D)\\s*[:：]?\\s*約?\\s*${num}\\s*${unit}`, "i"));
 
-  // サイズ抽出が失敗しても検索全体は成立させたいので、ここで例外を握りつぶし
-  // 空の結果（＝UI側で「サイズ不明」）にフォールバックする。
-  try {
-    const response = await client.messages.parse({
-      model: "claude-opus-4-8",
-      max_tokens: 16000,
-      thinking: { type: "adaptive" },
-      system:
-        "あなたは家具ECサイトの商品情報からサイズを抽出するアシスタントです。" +
-        "各商品の名前と説明文から、設置時の床面占有サイズである「幅（横方向）」と「奥行」をセンチメートル単位で抽出してください。" +
-        "mm表記はcmに換算してください。高さは不要です。" +
-        "サイズが読み取れない場合は null にしてください。推測で値を作らないでください。",
-      messages: [
-        {
-          role: "user",
-          content: JSON.stringify(input),
-        },
-      ],
-      output_config: {
-        format: zodOutputFormat(SizeExtraction),
-      },
-    });
+  let widthCm = widthMatch ? toCm(widthMatch[1], widthMatch[2]) : null;
+  let depthCm = depthMatch ? toCm(depthMatch[1], depthMatch[2]) : null;
 
-    for (const entry of response.parsed_output?.items ?? []) {
-      sizes.set(entry.index, { widthCm: entry.widthCm, depthCm: entry.depthCm });
+  // ラベルが無い「120×60」「120×60×70cm」形式は 1つ目=幅, 2つ目=奥行 とみなす
+  if (widthCm === null || depthCm === null) {
+    const dim = t.match(new RegExp(`${num}\\s*(?:cm|センチ|㎝)?\\s*[×xX✕*]\\s*${num}\\s*${unit}`, ""));
+    if (dim) {
+      if (widthCm === null) widthCm = toCm(dim[1], undefined);
+      if (depthCm === null) depthCm = toCm(dim[2], dim[3]);
     }
-  } catch (err) {
-    console.error("サイズ抽出に失敗しました:", err);
   }
-  return sizes;
+
+  return { widthCm, depthCm };
 }
 
 export async function GET(request: Request) {
@@ -148,17 +115,18 @@ export async function GET(request: Request) {
     const data = (await rakutenRes.json()) as { Items?: RakutenItem[] };
     const rakutenItems = data.Items ?? [];
 
-    const sizes = await extractSizes(rakutenItems);
-
-    let items: FurnitureItem[] = rakutenItems.map((item, index) => ({
-      id: item.itemCode,
-      name: item.itemName,
-      price: item.itemPrice,
-      url: item.itemUrl,
-      imageUrl: item.mediumImageUrls?.[0] ?? null,
-      widthCm: sizes.get(index)?.widthCm ?? null,
-      depthCm: sizes.get(index)?.depthCm ?? null,
-    }));
+    let items: FurnitureItem[] = rakutenItems.map((item) => {
+      const { widthCm, depthCm } = parseSizes(`${item.itemName} ${item.itemCaption}`);
+      return {
+        id: item.itemCode,
+        name: item.itemName,
+        price: item.itemPrice,
+        url: item.itemUrl,
+        imageUrl: item.mediumImageUrls?.[0] ?? null,
+        widthCm,
+        depthCm,
+      };
+    });
 
     // サイズ上限フィルタ: サイズ不明の商品は残す（UI側で「サイズ不明」と表示）
     const maxWidthNum = maxWidth ? Number(maxWidth) : null;
