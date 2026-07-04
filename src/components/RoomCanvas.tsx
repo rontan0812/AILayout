@@ -1,18 +1,39 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Stage, Layer, Rect, Text } from "react-konva";
+import { Stage, Layer, Rect, Text, Group } from "react-konva";
+import type Konva from "konva";
 
 const MAX_WIDTH = 700;
 const ASPECT = 500 / 700; // 高さ / 幅
 const PADDING_RATIO = 50 / 700;
 
+// 部屋に配置した家具1つ分。位置は部屋の左上を原点とした cm 座標で保持する
+// （キャンバスのリサイズでズレないように）。
+export type PlacedItem = {
+  uid: string;
+  name: string;
+  widthCm: number;
+  depthCm: number;
+  xCm: number;
+  yCm: number;
+};
+
 type RoomCanvasProps = {
   widthCm: number;
   depthCm: number;
+  placedItems: PlacedItem[];
+  onMove: (uid: string, xCm: number, yCm: number) => void;
+  onRemove: (uid: string) => void;
 };
 
-export default function RoomCanvas({ widthCm, depthCm }: RoomCanvasProps) {
+export default function RoomCanvas({
+  widthCm,
+  depthCm,
+  placedItems,
+  onMove,
+  onRemove,
+}: RoomCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [stageWidth, setStageWidth] = useState(MAX_WIDTH);
 
@@ -83,6 +104,62 @@ export default function RoomCanvas({ widthCm, depthCm }: RoomCanvasProps) {
                   fill="#57534e"
                   rotation={-90}
                 />
+
+                {placedItems.map((item) => {
+                  const w = item.widthCm * scale;
+                  const h = item.depthCm * scale;
+                  // 部屋からはみ出さない範囲に位置を丸める
+                  const maxXCm = Math.max(0, widthCm - item.widthCm);
+                  const maxYCm = Math.max(0, depthCm - item.depthCm);
+                  const clampedXCm = Math.min(Math.max(0, item.xCm), maxXCm);
+                  const clampedYCm = Math.min(Math.max(0, item.yCm), maxYCm);
+
+                  return (
+                    <Group
+                      key={item.uid}
+                      x={roomX + clampedXCm * scale}
+                      y={roomY + clampedYCm * scale}
+                      draggable
+                      dragBoundFunc={(pos) => ({
+                        x: Math.min(Math.max(pos.x, roomX), roomX + roomWidth - w),
+                        y: Math.min(Math.max(pos.y, roomY), roomY + roomDepth - h),
+                      })}
+                      onDragEnd={(e: Konva.KonvaEventObject<DragEvent>) => {
+                        const node = e.target;
+                        onMove(
+                          item.uid,
+                          (node.x() - roomX) / scale,
+                          (node.y() - roomY) / scale
+                        );
+                      }}
+                      onDblClick={() => onRemove(item.uid)}
+                      onDblTap={() => onRemove(item.uid)}
+                    >
+                      <Rect
+                        width={w}
+                        height={h}
+                        fill="#93c5fd"
+                        opacity={0.85}
+                        stroke="#2563eb"
+                        strokeWidth={2}
+                        cornerRadius={2}
+                      />
+                      <Text
+                        text={item.name}
+                        width={w}
+                        height={h}
+                        padding={2}
+                        align="center"
+                        verticalAlign="middle"
+                        fontSize={10}
+                        fill="#1e3a8a"
+                        ellipsis
+                        wrap="none"
+                        listening={false}
+                      />
+                    </Group>
+                  );
+                })}
               </Layer>
             </Stage>
           );

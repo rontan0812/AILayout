@@ -21,7 +21,11 @@ function formatSize(item: FurnitureItem): string {
   return `${w} × ${d} cm`;
 }
 
-export default function FurnitureSearchPanel() {
+type FurnitureSearchPanelProps = {
+  onPlace: (item: FurnitureItem) => void;
+};
+
+export default function FurnitureSearchPanel({ onPlace }: FurnitureSearchPanelProps) {
   const [keyword, setKeyword] = useState("ソファ");
   const [maxPrice, setMaxPrice] = useState("");
   const [maxWidth, setMaxWidth] = useState("");
@@ -159,6 +163,16 @@ export default function FurnitureSearchPanel() {
                 ¥{item.price.toLocaleString()}
               </p>
               <p className="text-xs text-stone-500">{formatSize(item)}</p>
+              <button
+                type="button"
+                onClick={() => onPlace(item)}
+                disabled={item.widthCm === null || item.depthCm === null}
+                className="mt-1 self-start rounded-md border border-blue-600 px-2 py-1 text-xs font-medium text-blue-600 hover:bg-blue-50 disabled:cursor-not-allowed disabled:border-stone-300 disabled:text-stone-400"
+              >
+                {item.widthCm === null || item.depthCm === null
+                  ? "サイズ不明で配置不可"
+                  : "部屋に配置"}
+              </button>
             </div>
           </li>
         ))}
