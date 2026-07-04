@@ -9,6 +9,25 @@ const MAX_WIDTH = 700;
 const ASPECT = 500 / 700; // 高さ / 幅
 const PADDING_RATIO = 50 / 700;
 
+// 商品名から家具の種類語を抽出する（具体的な語を優先）。キャンバス上の短いラベル用。
+const FURNITURE_KEYWORDS = [
+  "テレビ台", "ローテーブル", "ダイニングテーブル", "センターテーブル", "サイドテーブル", "こたつ",
+  "ソファベッド", "カウチソファ", "ソファー", "ソファ", "カウチ",
+  "ダイニングチェア", "オフィスチェア", "デスクチェア", "チェア", "椅子", "スツール", "ベンチ",
+  "テーブル", "デスク", "机",
+  "ベッド", "マットレス", "布団",
+  "チェスト", "タンス", "ドレッサー", "キャビネット", "食器棚", "本棚", "棚", "ラック", "シェルフ", "ワゴン", "収納", "ボード",
+  "カーペット", "ラグ", "ミラー", "鏡",
+];
+
+function extractKeyword(name: string): string {
+  for (const kw of FURNITURE_KEYWORDS) {
+    if (name.includes(kw)) return kw;
+  }
+  // 該当が無ければ商品名の先頭を短く表示
+  return name.slice(0, 6);
+}
+
 // 部屋に配置した家具1つ分。位置は部屋の左上を原点とした cm 座標で保持する
 // （キャンバスのリサイズでズレないように）。
 export type PlacedItem = {
@@ -193,7 +212,7 @@ export default function RoomCanvas({
                         cornerRadius={2}
                       />
                       <Text
-                        text={item.name}
+                        text={extractKeyword(item.name)}
                         width={w}
                         height={h}
                         padding={2}
