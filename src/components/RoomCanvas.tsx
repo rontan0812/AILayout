@@ -8,6 +8,18 @@ const MAX_WIDTH = 700;
 const ASPECT = 500 / 700; // 高さ / 幅
 const PADDING_RATIO = 50 / 700;
 
+// 配置した家具を見分けやすくするための配色（順番に割り当てる）
+const PALETTE = [
+  { fill: "#93c5fd", stroke: "#2563eb", text: "#1e3a8a" }, // 青
+  { fill: "#fca5a5", stroke: "#dc2626", text: "#7f1d1d" }, // 赤
+  { fill: "#86efac", stroke: "#16a34a", text: "#14532d" }, // 緑
+  { fill: "#fcd34d", stroke: "#d97706", text: "#78350f" }, // 黄
+  { fill: "#c4b5fd", stroke: "#7c3aed", text: "#4c1d95" }, // 紫
+  { fill: "#5eead4", stroke: "#0d9488", text: "#134e4a" }, // 青緑
+  { fill: "#fdba74", stroke: "#ea580c", text: "#7c2d12" }, // 橙
+  { fill: "#f9a8d4", stroke: "#db2777", text: "#831843" }, // 桃
+];
+
 // 部屋に配置した家具1つ分。位置は部屋の左上を原点とした cm 座標で保持する
 // （キャンバスのリサイズでズレないように）。
 export type PlacedItem = {
@@ -108,7 +120,8 @@ export default function RoomCanvas({
                   rotation={-90}
                 />
 
-                {placedItems.map((item) => {
+                {placedItems.map((item, index) => {
+                  const color = PALETTE[index % PALETTE.length];
                   const w = item.widthCm * scale;
                   const h = item.depthCm * scale;
                   // 部屋からはみ出さない範囲に位置を丸める
@@ -184,9 +197,9 @@ export default function RoomCanvas({
                       <Rect
                         width={w}
                         height={h}
-                        fill="#93c5fd"
-                        opacity={0.85}
-                        stroke="#2563eb"
+                        fill={color.fill}
+                        opacity={0.9}
+                        stroke={color.stroke}
                         strokeWidth={2}
                         cornerRadius={2}
                       />
@@ -198,7 +211,8 @@ export default function RoomCanvas({
                         align="center"
                         verticalAlign="middle"
                         fontSize={10}
-                        fill="#1e3a8a"
+                        fontStyle="bold"
+                        fill={color.text}
                         ellipsis
                         wrap="none"
                         listening={false}
