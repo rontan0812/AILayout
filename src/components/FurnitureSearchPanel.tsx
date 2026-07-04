@@ -61,7 +61,7 @@ export default function FurnitureSearchPanel() {
     "w-full rounded-md border border-stone-300 bg-white px-3 py-2 text-sm text-stone-800 focus:border-blue-500 focus:outline-none";
 
   return (
-    <section className="flex w-80 flex-col gap-4">
+    <section className="flex w-full max-w-md flex-col gap-4 lg:w-80">
       <h2 className="text-lg font-semibold text-stone-800">家具を探す</h2>
 
       <form className="flex flex-col gap-3" onSubmit={handleSearch}>
