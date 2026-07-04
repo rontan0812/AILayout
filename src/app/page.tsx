@@ -51,11 +51,12 @@ export default function Home() {
   const [roomSize, setRoomSize] = useState<RoomSize>({ widthCm: 360, depthCm: 270 });
   const [placedItems, setPlacedItems] = useState<PlacedItem[]>([]);
 
-  const handlePlace = (item: FurnitureItem) => {
+  const handlePlace = (item: FurnitureItem, keyword: string) => {
     // サイズが分かる家具だけ配置できる（実寸で描くため）
     if (item.widthCm === null || item.depthCm === null) return;
     const widthCm = item.widthCm;
     const depthCm = item.depthCm;
+    const kw = keyword || "家具";
     setPlacedItems((prev) => {
       const { x, y } = findFreePosition(
         prev,
@@ -64,11 +65,15 @@ export default function Home() {
         widthCm,
         depthCm
       );
+      // 同じキーワードの中での連番
+      const num = prev.filter((i) => i.keyword === kw).length + 1;
       return [
         ...prev,
         {
           uid: crypto.randomUUID(),
           name: item.name,
+          keyword: kw,
+          num,
           price: item.price,
           widthCm,
           depthCm,
@@ -118,31 +123,45 @@ export default function Home() {
                 {placedItems.map((item, index) => {
                   const color = FURNITURE_PALETTE[index % FURNITURE_PALETTE.length];
                   return (
-                    <li
-                      key={item.uid}
-                      className="flex items-center gap-2 rounded-md border border-stone-200 bg-white px-3 py-2"
-                    >
-                      <span
-                        className="h-4 w-4 shrink-0 rounded"
-                        style={{ backgroundColor: color.fill, border: `2px solid ${color.stroke}` }}
-                      />
-                      <span className="min-w-0 flex-1 truncate text-sm text-stone-800">
-                        {item.name}
-                      </span>
-                      <span className="shrink-0 text-xs text-stone-500">
-                        {item.widthCm}×{item.depthCm}cm
-                      </span>
-                      <span className="shrink-0 text-xs font-semibold text-stone-700">
-                        ¥{item.price.toLocaleString()}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => handleRemove(item.uid)}
-                        aria-label="削除"
-                        className="shrink-0 rounded px-1 text-lg leading-none text-stone-400 hover:text-red-600"
-                      >
-                        ×
-                      </button>
+                    <li key={item.uid}>
+                      <details className="group rounded-md border border-stone-200 bg-white">
+                        <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 [&::-webkit-details-marker]:hidden">
+                          <span
+                            className="h-4 w-4 shrink-0 rounded"
+                            style={{
+                              backgroundColor: color.fill,
+                              border: `2px solid ${color.stroke}`,
+                            }}
+                          />
+                          <span className="min-w-0 flex-1 truncate text-sm font-medium text-stone-800">
+                            {item.keyword}
+                            {item.num}
+                          </span>
+                          <span className="shrink-0 text-xs text-stone-500">
+                            {item.widthCm}×{item.depthCm}cm
+                          </span>
+                          <span className="shrink-0 text-xs font-semibold text-stone-700">
+                            ¥{item.price.toLocaleString()}
+                          </span>
+                          <span className="shrink-0 text-xs text-stone-400 transition-transform group-open:rotate-180">
+                            ▼
+                          </span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              handleRemove(item.uid);
+                            }}
+                            aria-label="削除"
+                            className="shrink-0 rounded px-1 text-lg leading-none text-stone-400 hover:text-red-600"
+                          >
+                            ×
+                          </button>
+                        </summary>
+                        <p className="break-words px-3 pb-2 text-xs text-stone-600">
+                          {item.name}
+                        </p>
+                      </details>
                     </li>
                   );
                 })}
