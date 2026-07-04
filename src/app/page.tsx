@@ -28,6 +28,7 @@ export default function Home() {
       {
         uid: crypto.randomUUID(),
         name: item.name,
+        price: item.price,
         widthCm: item.widthCm as number,
         depthCm: item.depthCm as number,
         xCm: 0,
@@ -46,6 +47,8 @@ export default function Home() {
     setPlacedItems((prev) => prev.filter((i) => i.uid !== uid));
   };
 
+  const totalPrice = placedItems.reduce((sum, i) => sum + i.price, 0);
+
   return (
     <main className="flex min-h-screen flex-col items-center gap-6 bg-stone-100 p-4 sm:p-8">
       <h1 className="text-xl font-bold text-stone-800 sm:text-2xl">家具配置シミュレーター</h1>
@@ -59,6 +62,14 @@ export default function Home() {
             onMove={handleMove}
             onRemove={handleRemove}
           />
+          <div className="flex w-full items-baseline justify-between rounded-lg border border-stone-200 bg-white px-4 py-3 shadow-sm">
+            <span className="text-sm text-stone-600">
+              配置した家具 {placedItems.length} 点の合計
+            </span>
+            <span className="text-lg font-bold text-stone-900">
+              ¥{totalPrice.toLocaleString()}
+            </span>
+          </div>
           {placedItems.length > 0 && (
             <p className="text-xs text-stone-500">
               家具はドラッグで移動、ダブルタップで削除できます

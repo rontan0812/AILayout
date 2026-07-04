@@ -13,6 +13,7 @@ const PADDING_RATIO = 50 / 700;
 export type PlacedItem = {
   uid: string;
   name: string;
+  price: number;
   widthCm: number;
   depthCm: number;
   xCm: number;
