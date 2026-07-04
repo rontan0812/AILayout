@@ -22,7 +22,7 @@ function formatSize(item: FurnitureItem): string {
 }
 
 type FurnitureSearchPanelProps = {
-  onPlace: (item: FurnitureItem) => void;
+  onPlace: (item: FurnitureItem, keyword: string) => void;
 };
 
 export default function FurnitureSearchPanel({ onPlace }: FurnitureSearchPanelProps) {
@@ -34,6 +34,8 @@ export default function FurnitureSearchPanel({ onPlace }: FurnitureSearchPanelPr
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searched, setSearched] = useState(false);
+  // 配置ラベルに使うため、実際に検索したキーワードを保持する
+  const [searchedKeyword, setSearchedKeyword] = useState("");
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -53,6 +55,7 @@ export default function FurnitureSearchPanel({ onPlace }: FurnitureSearchPanelPr
         throw new Error(data.error ?? `検索に失敗しました (${res.status})`);
       }
       setItems(data.items);
+      setSearchedKeyword(keyword.trim());
       setSearched(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "検索に失敗しました");
@@ -165,7 +168,7 @@ export default function FurnitureSearchPanel({ onPlace }: FurnitureSearchPanelPr
               <p className="text-xs text-stone-500">{formatSize(item)}</p>
               <button
                 type="button"
-                onClick={() => onPlace(item)}
+                onClick={() => onPlace(item, searchedKeyword)}
                 disabled={item.widthCm === null || item.depthCm === null}
                 className="mt-1 self-start rounded-md border border-blue-600 px-2 py-1 text-xs font-medium text-blue-600 hover:bg-blue-50 disabled:cursor-not-allowed disabled:border-stone-300 disabled:text-stone-400"
               >
