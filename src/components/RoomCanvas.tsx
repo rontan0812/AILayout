@@ -8,20 +8,6 @@ const MAX_WIDTH = 700;
 const ASPECT = 500 / 700; // 高さ / 幅
 const PADDING_RATIO = 50 / 700;
 
-// 2つの矩形（cm座標）が重なっているか判定する
-function rectsOverlap(
-  ax: number,
-  ay: number,
-  aw: number,
-  ah: number,
-  bx: number,
-  by: number,
-  bw: number,
-  bh: number
-): boolean {
-  return !(ax + aw <= bx || ax >= bx + bw || ay + ah <= by || ay >= by + bh);
-}
-
 // 部屋に配置した家具1つ分。位置は部屋の左上を原点とした cm 座標で保持する
 // （キャンバスのリサイズでズレないように）。
 export type PlacedItem = {
@@ -135,37 +121,54 @@ export default function RoomCanvas({
                       x={roomX + clampedXCm * scale}
                       y={roomY + clampedYCm * scale}
                       draggable
-                      dragBoundFunc={(pos) => ({
-                        x: Math.min(Math.max(pos.x, roomX), roomX + roomWidth - w),
-                        y: Math.min(Math.max(pos.y, roomY), roomY + roomDepth - h),
-                      })}
+                      dragBoundFunc={function (
+                        this: Konva.Node,
+                        pos: { x: number; y: number }
+                      ) {
+                        const others = placedItems.filter((o) => o.uid !== item.uid);
+                        const prevX = this.x();
+                        const prevY = this.y();
+
+                        // まず部屋の中に収める
+                        let px = Math.min(Math.max(pos.x, roomX), roomX + roomWidth - w);
+                        let py = Math.min(Math.max(pos.y, roomY), roomY + roomDepth - h);
+
+                        // X軸: 移動前のY帯で重なる家具の手前で止める（壁のように）
+                        const prevYCm = (prevY - roomY) / scale;
+                        let xCm = (px - roomX) / scale;
+                        for (const o of others) {
+                          const yBandOverlap = !(
+                            prevYCm + item.depthCm <= o.yCm || prevYCm >= o.yCm + o.depthCm
+                          );
+                          if (!yBandOverlap) continue;
+                          if (px > prevX) xCm = Math.min(xCm, o.xCm - item.widthCm);
+                          else if (px < prevX) xCm = Math.max(xCm, o.xCm + o.widthCm);
+                        }
+                        xCm = Math.min(Math.max(xCm, 0), widthCm - item.widthCm);
+                        px = roomX + xCm * scale;
+
+                        // Y軸: 確定したX列で重なる家具の手前で止める
+                        let yCm = (py - roomY) / scale;
+                        for (const o of others) {
+                          const xBandOverlap = !(
+                            xCm + item.widthCm <= o.xCm || xCm >= o.xCm + o.widthCm
+                          );
+                          if (!xBandOverlap) continue;
+                          if (py > prevY) yCm = Math.min(yCm, o.yCm - item.depthCm);
+                          else if (py < prevY) yCm = Math.max(yCm, o.yCm + o.depthCm);
+                        }
+                        yCm = Math.min(Math.max(yCm, 0), depthCm - item.depthCm);
+                        py = roomY + yCm * scale;
+
+                        return { x: px, y: py };
+                      }}
                       onDragEnd={(e: Konva.KonvaEventObject<DragEvent>) => {
                         const node = e.target;
-                        const candXCm = (node.x() - roomX) / scale;
-                        const candYCm = (node.y() - roomY) / scale;
-                        // 他の家具と重なる位置に置いたら元の位置へ戻す
-                        const hit = placedItems.some(
-                          (o) =>
-                            o.uid !== item.uid &&
-                            rectsOverlap(
-                              candXCm,
-                              candYCm,
-                              item.widthCm,
-                              item.depthCm,
-                              o.xCm,
-                              o.yCm,
-                              o.widthCm,
-                              o.depthCm
-                            )
+                        onMove(
+                          item.uid,
+                          (node.x() - roomX) / scale,
+                          (node.y() - roomY) / scale
                         );
-                        if (hit) {
-                          node.position({
-                            x: roomX + clampedXCm * scale,
-                            y: roomY + clampedYCm * scale,
-                          });
-                        } else {
-                          onMove(item.uid, candXCm, candYCm);
-                        }
                       }}
                       onDblClick={() => onRemove(item.uid)}
                       onDblTap={() => onRemove(item.uid)}
