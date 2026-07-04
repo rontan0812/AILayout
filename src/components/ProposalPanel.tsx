@@ -43,15 +43,15 @@ export default function ProposalPanel({ placedItems, budget }: ProposalPanelProp
           maxDepth: String(maxD),
         });
 
-        if (i > 0) await sleep(1200); // 前回の呼び出しから間隔を空ける
+        if (i > 0) await sleep(2100); // 前回の呼び出しから十分間隔を空ける
 
         let data: { items?: FurnitureItem[]; error?: string } = {};
         let ok = false;
-        for (let attempt = 0; attempt < 3; attempt++) {
+        for (let attempt = 0; attempt < 4; attempt++) {
           const res = await fetch(`/api/furniture/search?${params.toString()}`);
           data = await res.json();
           if (res.status === 429) {
-            await sleep(1300); // レート制限。少し待って再試行
+            await sleep(2000 * (attempt + 1)); // レート制限。待ち時間を増やして再試行
             continue;
           }
           if (!res.ok) {
