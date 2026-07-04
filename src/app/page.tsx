@@ -53,6 +53,7 @@ const STORAGE_KEY = "ailayout-v2";
 export default function Home() {
   const [roomSize, setRoomSize] = useState<RoomSize>({ widthCm: 360, depthCm: 270 });
   const [placedItems, setPlacedItems] = useState<PlacedItem[]>([]);
+  const [budget, setBudget] = useState<number>(0);
   // localStorage 読み込み完了フラグ（読み込み前の初期値で保存して上書きしないため）
   const [loaded, setLoaded] = useState(false);
 
@@ -66,6 +67,7 @@ export default function Home() {
         const saved = JSON.parse(raw);
         if (saved.roomSize) setRoomSize(saved.roomSize);
         if (Array.isArray(saved.placedItems)) setPlacedItems(saved.placedItems);
+        if (typeof saved.budget === "number") setBudget(saved.budget);
       }
     } catch {
       // 壊れたデータは無視して初期状態で始める
@@ -78,11 +80,11 @@ export default function Home() {
   useEffect(() => {
     if (!loaded) return;
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ roomSize, placedItems }));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ roomSize, placedItems, budget }));
     } catch {
       // 保存に失敗しても致命的ではないので無視
     }
-  }, [roomSize, placedItems, loaded]);
+  }, [roomSize, placedItems, budget, loaded]);
 
   const handlePlacePreset = (preset: FurniturePreset) => {
     setPlacedItems((prev) => {
@@ -147,6 +149,28 @@ export default function Home() {
       <div className="flex w-full max-w-5xl flex-col items-center gap-8 lg:flex-row lg:items-start lg:justify-center">
         <div className="flex w-full max-w-[700px] flex-col items-center gap-6">
           <RoomSizeForm value={roomSize} onChange={setRoomSize} />
+          <div className="flex w-full items-center justify-between rounded-lg border border-stone-200 bg-white px-4 py-3 shadow-sm">
+            <label htmlFor="budget" className="text-sm text-stone-600">
+              全体予算
+            </label>
+            <div className="flex items-center gap-1">
+              <span className="text-stone-500">¥</span>
+              <input
+                id="budget"
+                type="number"
+                min={0}
+                step={1000}
+                value={budget || ""}
+                onChange={(e) =>
+                  setBudget(
+                    Number.isFinite(e.target.valueAsNumber) ? e.target.valueAsNumber : 0
+                  )
+                }
+                placeholder="例: 200000"
+                className="w-36 rounded-md border border-stone-300 px-2 py-1 text-right text-stone-800 focus:border-blue-500 focus:outline-none"
+              />
+            </div>
+          </div>
           <RoomCanvas
             widthCm={roomSize.widthCm}
             depthCm={roomSize.depthCm}
