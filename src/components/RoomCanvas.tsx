@@ -37,6 +37,8 @@ export default function RoomCanvas({
 }: RoomCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [stageWidth, setStageWidth] = useState(MAX_WIDTH);
+  // ドラッグ中の家具の「前フレーム位置」（cm）。貫通防止の基準に使う。
+  const dragRef = useRef<{ x: number; y: number } | null>(null);
 
   // 親要素の幅に追従させる（携帯では画面幅、PCでは最大700px）
   useEffect(() => {
@@ -121,42 +123,55 @@ export default function RoomCanvas({
                       x={roomX + clampedXCm * scale}
                       y={roomY + clampedYCm * scale}
                       draggable
+                      onDragStart={() => {
+                        dragRef.current = { x: clampedXCm, y: clampedYCm };
+                      }}
                       dragBoundFunc={(pos) => {
                         const others = placedItems.filter((o) => o.uid !== item.uid);
                         const iw = item.widthCm;
                         const id = item.depthCm;
-                        // 部屋の内側に収めた候補位置（cm）
-                        let x = Math.min(Math.max((pos.x - roomX) / scale, 0), widthCm - iw);
-                        let y = Math.min(Math.max((pos.y - roomY) / scale, 0), depthCm - id);
-                        // 重なりを最小移動量の方向へ押し出す（斜めでも貫通せず壁のように止まる）
-                        for (let iter = 0; iter < 4; iter++) {
-                          let moved = false;
-                          for (const o of others) {
-                            const noOverlap =
-                              x + iw <= o.xCm ||
-                              x >= o.xCm + o.widthCm ||
-                              y + id <= o.yCm ||
-                              y >= o.yCm + o.depthCm;
-                            if (noOverlap) continue;
-                            const penLeft = x + iw - o.xCm;
-                            const penRight = o.xCm + o.widthCm - x;
-                            const penUp = y + id - o.yCm;
-                            const penDown = o.yCm + o.depthCm - y;
-                            const minPen = Math.min(penLeft, penRight, penUp, penDown);
-                            if (minPen === penLeft) x -= penLeft;
-                            else if (minPen === penRight) x += penRight;
-                            else if (minPen === penUp) y -= penUp;
-                            else y += penDown;
-                            x = Math.min(Math.max(x, 0), widthCm - iw);
-                            y = Math.min(Math.max(y, 0), depthCm - id);
-                            moved = true;
+                        const prev = dragRef.current ?? { x: clampedXCm, y: clampedYCm };
+                        // 提案位置（部屋内にクランプ）
+                        const targetX = Math.min(
+                          Math.max((pos.x - roomX) / scale, 0),
+                          widthCm - iw
+                        );
+                        const targetY = Math.min(
+                          Math.max((pos.y - roomY) / scale, 0),
+                          depthCm - id
+                        );
+
+                        // X軸: 進行方向にある家具の手前で止める（前フレーム位置基準なので貫通しない）
+                        let nx = targetX;
+                        for (const o of others) {
+                          // 前フレームのY帯で重なっていなければ、その家具はこの行に無い
+                          if (prev.y + id <= o.yCm || prev.y >= o.yCm + o.depthCm) continue;
+                          if (targetX > prev.x && prev.x + iw <= o.xCm) {
+                            nx = Math.min(nx, o.xCm - iw); // 右へ移動中: 左面で止める
+                          } else if (targetX < prev.x && prev.x >= o.xCm + o.widthCm) {
+                            nx = Math.max(nx, o.xCm + o.widthCm); // 左へ移動中: 右面で止める
                           }
-                          if (!moved) break;
                         }
-                        return { x: roomX + x * scale, y: roomY + y * scale };
+                        nx = Math.min(Math.max(nx, 0), widthCm - iw);
+
+                        // Y軸: 確定したX列で進行方向にある家具の手前で止める
+                        let ny = targetY;
+                        for (const o of others) {
+                          if (nx + iw <= o.xCm || nx >= o.xCm + o.widthCm) continue;
+                          if (targetY > prev.y && prev.y + id <= o.yCm) {
+                            ny = Math.min(ny, o.yCm - id); // 下へ移動中: 上面で止める
+                          } else if (targetY < prev.y && prev.y >= o.yCm + o.depthCm) {
+                            ny = Math.max(ny, o.yCm + o.depthCm); // 上へ移動中: 下面で止める
+                          }
+                        }
+                        ny = Math.min(Math.max(ny, 0), depthCm - id);
+
+                        dragRef.current = { x: nx, y: ny };
+                        return { x: roomX + nx * scale, y: roomY + ny * scale };
                       }}
                       onDragEnd={(e: Konva.KonvaEventObject<DragEvent>) => {
                         const node = e.target;
+                        dragRef.current = null;
                         onMove(
                           item.uid,
                           (node.x() - roomX) / scale,
