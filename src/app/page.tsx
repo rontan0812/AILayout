@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import RoomSizeForm, { type RoomSize } from "@/components/RoomSizeForm";
 import FurniturePresetPanel from "@/components/FurniturePresetPanel";
+import ProposalPanel from "@/components/ProposalPanel";
 import type { FurniturePreset } from "@/components/furnitureCatalog";
 import type { PlacedItem } from "@/components/RoomCanvas";
 import { FURNITURE_PALETTE } from "@/components/furniturePalette";
@@ -243,6 +244,7 @@ export default function Home() {
         </div>
         <FurniturePresetPanel onPlace={handlePlacePreset} />
       </div>
+      <ProposalPanel placedItems={placedItems} budget={budget} />
     </main>
   );
 }
