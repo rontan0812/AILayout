@@ -121,46 +121,39 @@ export default function RoomCanvas({
                       x={roomX + clampedXCm * scale}
                       y={roomY + clampedYCm * scale}
                       draggable
-                      dragBoundFunc={function (
-                        this: Konva.Node,
-                        pos: { x: number; y: number }
-                      ) {
+                      dragBoundFunc={(pos) => {
                         const others = placedItems.filter((o) => o.uid !== item.uid);
-                        const prevX = this.x();
-                        const prevY = this.y();
-
-                        // まず部屋の中に収める
-                        let px = Math.min(Math.max(pos.x, roomX), roomX + roomWidth - w);
-                        let py = Math.min(Math.max(pos.y, roomY), roomY + roomDepth - h);
-
-                        // X軸: 移動前のY帯で重なる家具の手前で止める（壁のように）
-                        const prevYCm = (prevY - roomY) / scale;
-                        let xCm = (px - roomX) / scale;
-                        for (const o of others) {
-                          const yBandOverlap = !(
-                            prevYCm + item.depthCm <= o.yCm || prevYCm >= o.yCm + o.depthCm
-                          );
-                          if (!yBandOverlap) continue;
-                          if (px > prevX) xCm = Math.min(xCm, o.xCm - item.widthCm);
-                          else if (px < prevX) xCm = Math.max(xCm, o.xCm + o.widthCm);
+                        const iw = item.widthCm;
+                        const id = item.depthCm;
+                        // 部屋の内側に収めた候補位置（cm）
+                        let x = Math.min(Math.max((pos.x - roomX) / scale, 0), widthCm - iw);
+                        let y = Math.min(Math.max((pos.y - roomY) / scale, 0), depthCm - id);
+                        // 重なりを最小移動量の方向へ押し出す（斜めでも貫通せず壁のように止まる）
+                        for (let iter = 0; iter < 4; iter++) {
+                          let moved = false;
+                          for (const o of others) {
+                            const noOverlap =
+                              x + iw <= o.xCm ||
+                              x >= o.xCm + o.widthCm ||
+                              y + id <= o.yCm ||
+                              y >= o.yCm + o.depthCm;
+                            if (noOverlap) continue;
+                            const penLeft = x + iw - o.xCm;
+                            const penRight = o.xCm + o.widthCm - x;
+                            const penUp = y + id - o.yCm;
+                            const penDown = o.yCm + o.depthCm - y;
+                            const minPen = Math.min(penLeft, penRight, penUp, penDown);
+                            if (minPen === penLeft) x -= penLeft;
+                            else if (minPen === penRight) x += penRight;
+                            else if (minPen === penUp) y -= penUp;
+                            else y += penDown;
+                            x = Math.min(Math.max(x, 0), widthCm - iw);
+                            y = Math.min(Math.max(y, 0), depthCm - id);
+                            moved = true;
+                          }
+                          if (!moved) break;
                         }
-                        xCm = Math.min(Math.max(xCm, 0), widthCm - item.widthCm);
-                        px = roomX + xCm * scale;
-
-                        // Y軸: 確定したX列で重なる家具の手前で止める
-                        let yCm = (py - roomY) / scale;
-                        for (const o of others) {
-                          const xBandOverlap = !(
-                            xCm + item.widthCm <= o.xCm || xCm >= o.xCm + o.widthCm
-                          );
-                          if (!xBandOverlap) continue;
-                          if (py > prevY) yCm = Math.min(yCm, o.yCm - item.depthCm);
-                          else if (py < prevY) yCm = Math.max(yCm, o.yCm + o.depthCm);
-                        }
-                        yCm = Math.min(Math.max(yCm, 0), depthCm - item.depthCm);
-                        py = roomY + yCm * scale;
-
-                        return { x: px, y: py };
+                        return { x: roomX + x * scale, y: roomY + y * scale };
                       }}
                       onDragEnd={(e: Konva.KonvaEventObject<DragEvent>) => {
                         const node = e.target;
