@@ -13,10 +13,8 @@ const PADDING_RATIO = 50 / 700;
 // （キャンバスのリサイズでズレないように）。
 export type PlacedItem = {
   uid: string;
-  name: string;
-  keyword: string; // 検索に使ったキーワード（キャンバス表示用）
-  num: number; // 同じキーワード内での連番
-  price: number;
+  type: string; // 家具の種類（ソファ等）
+  num: number; // 同じ種類内での連番
   widthCm: number;
   depthCm: number;
   xCm: number;
@@ -195,7 +193,7 @@ export default function RoomCanvas({
                         cornerRadius={2}
                       />
                       <Text
-                        text={`${item.keyword}${item.num}`}
+                        text={`${item.type}${item.num}`}
                         width={w}
                         height={h}
                         padding={2}

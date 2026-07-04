@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import RoomSizeForm, { type RoomSize } from "@/components/RoomSizeForm";
-import FurnitureSearchPanel, { type FurnitureItem } from "@/components/FurnitureSearchPanel";
+import FurniturePresetPanel from "@/components/FurniturePresetPanel";
+import type { FurniturePreset } from "@/components/furnitureCatalog";
 import type { PlacedItem } from "@/components/RoomCanvas";
 import { FURNITURE_PALETTE } from "@/components/furniturePalette";
 
@@ -47,7 +48,7 @@ const RoomCanvas = dynamic(() => import("@/components/RoomCanvas"), {
   ),
 });
 
-const STORAGE_KEY = "ailayout-state";
+const STORAGE_KEY = "ailayout-v2";
 
 export default function Home() {
   const [roomSize, setRoomSize] = useState<RoomSize>({ widthCm: 360, depthCm: 270 });
@@ -83,32 +84,25 @@ export default function Home() {
     }
   }, [roomSize, placedItems, loaded]);
 
-  const handlePlace = (item: FurnitureItem, keyword: string) => {
-    // サイズが分かる家具だけ配置できる（実寸で描くため）
-    if (item.widthCm === null || item.depthCm === null) return;
-    const widthCm = item.widthCm;
-    const depthCm = item.depthCm;
-    const kw = keyword || "家具";
+  const handlePlacePreset = (preset: FurniturePreset) => {
     setPlacedItems((prev) => {
       const { x, y } = findFreePosition(
         prev,
         roomSize.widthCm,
         roomSize.depthCm,
-        widthCm,
-        depthCm
+        preset.widthCm,
+        preset.depthCm
       );
-      // 同じキーワードの中での連番
-      const num = prev.filter((i) => i.keyword === kw).length + 1;
+      // 同じ種類の中での連番
+      const num = prev.filter((i) => i.type === preset.type).length + 1;
       return [
         ...prev,
         {
           uid: crypto.randomUUID(),
-          name: item.name,
-          keyword: kw,
+          type: preset.type,
           num,
-          price: item.price,
-          widthCm,
-          depthCm,
+          widthCm: preset.widthCm,
+          depthCm: preset.depthCm,
           xCm: x,
           yCm: y,
         },
@@ -126,7 +120,26 @@ export default function Home() {
     setPlacedItems((prev) => prev.filter((i) => i.uid !== uid));
   };
 
-  const totalPrice = placedItems.reduce((sum, i) => sum + i.price, 0);
+  const handleResize = (
+    uid: string,
+    key: "widthCm" | "depthCm",
+    value: number
+  ) => {
+    setPlacedItems((prev) =>
+      prev.map((i) => {
+        if (i.uid !== uid) return i;
+        const v = Number.isFinite(value) ? Math.max(1, Math.round(value)) : i[key];
+        const next = { ...i, [key]: v };
+        // 部屋の外にはみ出さないよう位置を丸める
+        next.xCm = Math.min(next.xCm, Math.max(0, roomSize.widthCm - next.widthCm));
+        next.yCm = Math.min(next.yCm, Math.max(0, roomSize.depthCm - next.depthCm));
+        return next;
+      })
+    );
+  };
+
+  const sizeInputClass =
+    "w-14 rounded border border-stone-300 px-1 py-0.5 text-right text-xs text-stone-800 focus:border-blue-500 focus:outline-none";
 
   return (
     <main className="flex min-h-screen flex-col items-center gap-6 bg-stone-100 p-4 sm:p-8">
@@ -141,59 +154,59 @@ export default function Home() {
             onMove={handleMove}
             onRemove={handleRemove}
           />
-          <div className="flex w-full items-baseline justify-between rounded-lg border border-stone-200 bg-white px-4 py-3 shadow-sm">
-            <span className="text-sm text-stone-600">
-              配置した家具 {placedItems.length} 点の合計
-            </span>
-            <span className="text-lg font-bold text-stone-900">
-              ¥{totalPrice.toLocaleString()}
-            </span>
-          </div>
           {placedItems.length > 0 && (
             <div className="flex w-full flex-col gap-2">
               <ul className="flex flex-col gap-1.5">
                 {placedItems.map((item, index) => {
                   const color = FURNITURE_PALETTE[index % FURNITURE_PALETTE.length];
                   return (
-                    <li key={item.uid}>
-                      <details className="group rounded-md border border-stone-200 bg-white">
-                        <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 [&::-webkit-details-marker]:hidden">
-                          <span
-                            className="h-4 w-4 shrink-0 rounded"
-                            style={{
-                              backgroundColor: color.fill,
-                              border: `2px solid ${color.stroke}`,
-                            }}
-                          />
-                          <span className="min-w-0 flex-1 truncate text-sm font-medium text-stone-800">
-                            {item.keyword}
-                            {item.num}
-                          </span>
-                          <span className="shrink-0 text-xs text-stone-500">
-                            {item.widthCm}×{item.depthCm}cm
-                          </span>
-                          <span className="shrink-0 text-xs font-semibold text-stone-700">
-                            ¥{item.price.toLocaleString()}
-                          </span>
-                          <span className="shrink-0 text-xs text-stone-400 transition-transform group-open:rotate-180">
-                            ▼
-                          </span>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              handleRemove(item.uid);
-                            }}
-                            aria-label="削除"
-                            className="shrink-0 rounded px-1 text-lg leading-none text-stone-400 hover:text-red-600"
-                          >
-                            ×
-                          </button>
-                        </summary>
-                        <p className="break-words px-3 pb-2 text-xs text-stone-600">
-                          {item.name}
-                        </p>
-                      </details>
+                    <li
+                      key={item.uid}
+                      className="flex items-center gap-2 rounded-md border border-stone-200 bg-white px-3 py-2"
+                    >
+                      <span
+                        className="h-4 w-4 shrink-0 rounded"
+                        style={{
+                          backgroundColor: color.fill,
+                          border: `2px solid ${color.stroke}`,
+                        }}
+                      />
+                      <span className="min-w-0 flex-1 truncate text-sm font-medium text-stone-800">
+                        {item.type}
+                        {item.num}
+                      </span>
+                      <span className="flex shrink-0 items-center gap-1 text-xs text-stone-500">
+                        <input
+                          type="number"
+                          min={1}
+                          value={item.widthCm}
+                          onChange={(e) =>
+                            handleResize(item.uid, "widthCm", e.target.valueAsNumber)
+                          }
+                          className={sizeInputClass}
+                          aria-label="横(cm)"
+                        />
+                        ×
+                        <input
+                          type="number"
+                          min={1}
+                          value={item.depthCm}
+                          onChange={(e) =>
+                            handleResize(item.uid, "depthCm", e.target.valueAsNumber)
+                          }
+                          className={sizeInputClass}
+                          aria-label="奥行(cm)"
+                        />
+                        cm
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleRemove(item.uid)}
+                        aria-label="削除"
+                        className="shrink-0 rounded px-1 text-lg leading-none text-stone-400 hover:text-red-600"
+                      >
+                        ×
+                      </button>
                     </li>
                   );
                 })}
@@ -204,7 +217,7 @@ export default function Home() {
             </div>
           )}
         </div>
-        <FurnitureSearchPanel onPlace={handlePlace} />
+        <FurniturePresetPanel onPlace={handlePlacePreset} />
       </div>
     </main>
   );
