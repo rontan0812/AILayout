@@ -26,27 +26,45 @@ export default function ProposalPanel({ placedItems, budget }: ProposalPanelProp
     setLoading(true);
     setError(null);
     try {
-      // 種類ごとに1回だけ楽天検索（枠の最大サイズで絞る）
+      // 種類ごとに1回だけ楽天検索（枠の最大サイズで絞る）。
+      // 楽天の新APIは約1リクエスト/秒の制限があるため、逐次＋間隔＋429リトライで叩く。
+      const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
       const types = [...new Set(placedItems.map((b) => b.type))];
       const byType: Record<string, FurnitureItem[]> = {};
-      await Promise.all(
-        types.map(async (type) => {
-          const blocks = placedItems.filter((b) => b.type === type);
-          const maxW = Math.max(...blocks.map((b) => b.widthCm));
-          const maxD = Math.max(...blocks.map((b) => b.depthCm));
-          const params = new URLSearchParams({
-            keyword: type,
-            maxWidth: String(maxW),
-            maxDepth: String(maxD),
-          });
+
+      for (let i = 0; i < types.length; i++) {
+        const type = types[i];
+        const blocks = placedItems.filter((b) => b.type === type);
+        const maxW = Math.max(...blocks.map((b) => b.widthCm));
+        const maxD = Math.max(...blocks.map((b) => b.depthCm));
+        const params = new URLSearchParams({
+          keyword: type,
+          maxWidth: String(maxW),
+          maxDepth: String(maxD),
+        });
+
+        if (i > 0) await sleep(1200); // 前回の呼び出しから間隔を空ける
+
+        let data: { items?: FurnitureItem[]; error?: string } = {};
+        let ok = false;
+        for (let attempt = 0; attempt < 3; attempt++) {
           const res = await fetch(`/api/furniture/search?${params.toString()}`);
-          const data = await res.json();
+          data = await res.json();
+          if (res.status === 429) {
+            await sleep(1300); // レート制限。少し待って再試行
+            continue;
+          }
           if (!res.ok) {
             throw new Error(data.error ?? `検索に失敗しました (${res.status})`);
           }
-          byType[type] = (data.items ?? []) as FurnitureItem[];
-        })
-      );
+          ok = true;
+          break;
+        }
+        if (!ok) {
+          throw new Error("楽天APIのレート制限が続いています。少し待ってからお試しください。");
+        }
+        byType[type] = data.items ?? [];
+      }
 
       // 各枠に「枠サイズに収まる最安の候補」を割り当て
       const result: Assignment[] = placedItems.map((block, index) => {
