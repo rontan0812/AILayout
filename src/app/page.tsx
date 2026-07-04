@@ -141,6 +141,19 @@ export default function Home() {
     );
   };
 
+  const handleRotate = (uid: string) => {
+    // 90°回転＝横と奥行を入れ替える（四角い枠なのでこれで十分）
+    setPlacedItems((prev) =>
+      prev.map((i) => {
+        if (i.uid !== uid) return i;
+        const next = { ...i, widthCm: i.depthCm, depthCm: i.widthCm };
+        next.xCm = Math.min(next.xCm, Math.max(0, roomSize.widthCm - next.widthCm));
+        next.yCm = Math.min(next.yCm, Math.max(0, roomSize.depthCm - next.depthCm));
+        return next;
+      })
+    );
+  };
+
   const sizeInputClass =
     "w-14 rounded border border-stone-300 px-1 py-0.5 text-right text-xs text-stone-800 focus:border-blue-500 focus:outline-none";
 
@@ -224,6 +237,15 @@ export default function Home() {
                         />
                         cm
                       </span>
+                      <button
+                        type="button"
+                        onClick={() => handleRotate(item.uid)}
+                        aria-label="90度回転"
+                        title="90°回転"
+                        className="shrink-0 rounded px-1 text-base leading-none text-stone-400 hover:text-blue-600"
+                      >
+                        ⟳
+                      </button>
                       <button
                         type="button"
                         onClick={() => handleRemove(item.uid)}
