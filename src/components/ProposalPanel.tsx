@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { FurnitureItem } from "./FurnitureSearchPanel";
 import type { PlacedItem } from "./RoomCanvas";
 import { FURNITURE_PALETTE } from "./furniturePalette";
+import { searchKeywordsFor } from "./furnitureCatalog";
 
 type ProposalPanelProps = {
   placedItems: PlacedItem[];
@@ -26,49 +27,56 @@ export default function ProposalPanel({ placedItems, budget }: ProposalPanelProp
     setLoading(true);
     setError(null);
     try {
-      // 種類ごとに1回だけ楽天検索（枠の最大サイズで絞る）。
-      // 楽天の新APIは約1リクエスト/秒の制限があるため、逐次＋間隔＋429リトライで叩く。
+      // 楽天の新APIは約1リクエスト/秒の制限があるため、1件ずつ間隔を空けて叩く。
       const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-      const types = [...new Set(placedItems.map((b) => b.type))];
-      const byType: Record<string, FurnitureItem[]> = {};
-
-      for (let i = 0; i < types.length; i++) {
-        const type = types[i];
-        const blocks = placedItems.filter((b) => b.type === type);
-        const maxW = Math.max(...blocks.map((b) => b.widthCm));
-        const maxD = Math.max(...blocks.map((b) => b.depthCm));
+      let requestCount = 0;
+      const fetchItems = async (
+        keyword: string,
+        maxW: number,
+        maxD: number
+      ): Promise<FurnitureItem[]> => {
+        if (requestCount > 0) await sleep(2100);
+        requestCount++;
         const params = new URLSearchParams({
-          keyword: type,
+          keyword,
           maxWidth: String(maxW),
           maxDepth: String(maxD),
         });
-
-        if (i > 0) await sleep(2100); // 前回の呼び出しから十分間隔を空ける
-
-        let data: { items?: FurnitureItem[]; error?: string } = {};
-        let ok = false;
         for (let attempt = 0; attempt < 4; attempt++) {
           const res = await fetch(`/api/furniture/search?${params.toString()}`);
-          data = await res.json();
+          const data = (await res.json()) as { items?: FurnitureItem[]; error?: string };
           if (res.status === 429) {
-            await sleep(2000 * (attempt + 1)); // レート制限。待ち時間を増やして再試行
+            await sleep(2000 * (attempt + 1)); // レート制限。待って再試行
             continue;
           }
           if (!res.ok) {
             throw new Error(data.error ?? `検索に失敗しました (${res.status})`);
           }
-          ok = true;
-          break;
+          return data.items ?? [];
         }
-        if (!ok) {
-          throw new Error("楽天APIのレート制限が続いています。少し待ってからお試しください。");
+        throw new Error("楽天APIのレート制限が続いています。少し待ってからお試しください。");
+      };
+
+      // 種類ごとに、類義語も含めて検索し候補をまとめる（重複はidで除外）
+      const types = [...new Set(placedItems.map((b) => b.type))];
+      const byType: Record<string, FurnitureItem[]> = {};
+      for (const type of types) {
+        const blocks = placedItems.filter((b) => b.type === type);
+        const maxW = Math.max(...blocks.map((b) => b.widthCm));
+        const maxD = Math.max(...blocks.map((b) => b.depthCm));
+        const merged = new Map<string, FurnitureItem>();
+        for (const kw of searchKeywordsFor(type)) {
+          const items = await fetchItems(kw, maxW, maxD);
+          for (const it of items) {
+            if (!merged.has(it.id)) merged.set(it.id, it);
+          }
         }
-        byType[type] = data.items ?? [];
+        byType[type] = [...merged.values()];
       }
 
-      // 各枠に「枠サイズに収まる最安の候補」を割り当て
-      const result: Assignment[] = placedItems.map((block, index) => {
-        const candidates = (byType[block.type] ?? [])
+      // 各枠が置ける候補（枠サイズに収まる）を安い順に用意
+      const blockCands: FurnitureItem[][] = placedItems.map((block) =>
+        (byType[block.type] ?? [])
           .filter(
             (p) =>
               p.widthCm !== null &&
@@ -76,9 +84,51 @@ export default function ProposalPanel({ placedItems, budget }: ProposalPanelProp
               p.widthCm <= block.widthCm &&
               p.depthCm <= block.depthCm
           )
-          .sort((a, b) => a.price - b.price);
-        return { block, index, product: candidates[0] ?? null };
-      });
+          .sort((a, b) => a.price - b.price)
+      );
+
+      // まず各枠に最安を割り当て
+      const chosen: number[] = placedItems.map((_, idx) =>
+        blockCands[idx].length ? 0 : -1
+      );
+      const priceOf = (idx: number) =>
+        chosen[idx] >= 0 ? blockCands[idx][chosen[idx]].price : 0;
+      let total = placedItems.reduce((s, _, idx) => s + priceOf(idx), 0);
+
+      // 予算があり、収まっているなら、予算を使い切る方向に貪欲にアップグレード
+      if (budget > 0 && total <= budget) {
+        let improved = true;
+        while (improved) {
+          improved = false;
+          let best: { idx: number; newIdx: number; delta: number } | null = null;
+          for (let idx = 0; idx < placedItems.length; idx++) {
+            if (chosen[idx] < 0) continue;
+            const cur = priceOf(idx);
+            const cands = blockCands[idx];
+            // より高い候補のうち、予算内に収まる最も高いものを探す
+            for (let j = cands.length - 1; j > chosen[idx]; j--) {
+              const p = cands[j].price;
+              if (p <= cur) continue;
+              if (total - cur + p <= budget) {
+                const delta = p - cur;
+                if (!best || delta > best.delta) best = { idx, newIdx: j, delta };
+                break;
+              }
+            }
+          }
+          if (best) {
+            total += best.delta;
+            chosen[best.idx] = best.newIdx;
+            improved = true;
+          }
+        }
+      }
+
+      const result: Assignment[] = placedItems.map((block, index) => ({
+        block,
+        index,
+        product: chosen[index] >= 0 ? blockCands[index][chosen[index]] : null,
+      }));
       setAssignments(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : "提案の作成に失敗しました");
