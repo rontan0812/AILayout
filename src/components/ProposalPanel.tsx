@@ -5,8 +5,7 @@ import type { FurnitureItem } from "./FurnitureSearchPanel";
 import type { PlacedItem } from "./RoomCanvas";
 import { FURNITURE_PALETTE } from "./furniturePalette";
 import { searchKeywordsFor } from "./furnitureCatalog";
-
-const PROPOSAL_KEY = "ailayout-proposal";
+import { PROPOSAL_KEY } from "./storageKeys";
 
 type ProposalPanelProps = {
   placedItems: PlacedItem[];
