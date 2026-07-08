@@ -138,18 +138,25 @@ export default function ProposalPanel({ placedItems, budget }: ProposalPanelProp
           .sort((a, b) => a.price - b.price);
         blockCands.push(fitting);
         if (fitting.length === 0) {
-          // サイズが分かる候補の中から、枠との差が最小のものを選ぶ
+          // サイズが分かる候補があれば、枠との差が最小のものを選ぶ
           const sized = cands.filter((p) => p.widthCm !== null && p.depthCm !== null);
-          sized.sort((a, b) => {
-            const da =
-              Math.abs((a.widthCm as number) - block.widthCm) +
-              Math.abs((a.depthCm as number) - block.depthCm);
-            const db =
-              Math.abs((b.widthCm as number) - block.widthCm) +
-              Math.abs((b.depthCm as number) - block.depthCm);
-            return da - db;
-          });
-          fallbackProducts.push(sized[0] ?? null);
+          if (sized.length > 0) {
+            sized.sort((a, b) => {
+              const da =
+                Math.abs((a.widthCm as number) - block.widthCm) +
+                Math.abs((a.depthCm as number) - block.depthCm);
+              const db =
+                Math.abs((b.widthCm as number) - block.widthCm) +
+                Math.abs((b.depthCm as number) - block.depthCm);
+              return da - db;
+            });
+            fallbackProducts.push(sized[0]);
+          } else if (cands.length > 0) {
+            // サイズ不明でも、最も安い候補を出す（候補なしにしない）
+            fallbackProducts.push([...cands].sort((a, b) => a.price - b.price)[0]);
+          } else {
+            fallbackProducts.push(null);
+          }
         } else {
           fallbackProducts.push(null);
         }
@@ -362,13 +369,15 @@ export default function ProposalPanel({ placedItems, budget }: ProposalPanelProp
                             ¥{a.product.price.toLocaleString()}
                           </span>
                           <span className="ml-2 text-xs text-stone-500">
-                            幅{a.product.widthCm}×奥行{a.product.depthCm}cm
+                            {a.product.widthCm !== null && a.product.depthCm !== null
+                              ? `幅${a.product.widthCm}×奥行${a.product.depthCm}cm`
+                              : "サイズ不明"}
                           </span>
                         </span>
                       </>
                     ) : (
                       <span className="text-sm text-stone-400">
-                        枠に収まる候補が見つかりませんでした
+                        この種類の商品が見つかりませんでした
                       </span>
                     )}
                   </div>
