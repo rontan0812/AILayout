@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Stage, Layer, Rect, Text, Group, Line } from "react-konva";
+import { Stage, Layer, Rect, Text, Group, Line, Circle } from "react-konva";
 import type Konva from "konva";
 import { FURNITURE_PALETTE } from "./furniturePalette";
 import { doorClearanceRects } from "./clearance";
@@ -300,6 +300,27 @@ export default function RoomCanvas({
                     listening={false}
                   />
                 ))}
+
+                {flowPaths.map((path, i) => {
+                  const a = path[0];
+                  const b = path[path.length - 1];
+                  return (
+                    <Group key={`flow-end-${i}`} listening={false}>
+                      <Circle
+                        x={roomX + a.xCm * scale}
+                        y={roomY + a.yCm * scale}
+                        radius={5}
+                        fill="#059669"
+                      />
+                      <Circle
+                        x={roomX + b.xCm * scale}
+                        y={roomY + b.yCm * scale}
+                        radius={5}
+                        fill="#059669"
+                      />
+                    </Group>
+                  );
+                })}
               </Layer>
             </Stage>
           );

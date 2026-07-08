@@ -68,6 +68,7 @@ export default function Home() {
   const [placedItems, setPlacedItems] = useState<PlacedItem[]>([]);
   const [openings, setOpenings] = useState<Opening[]>([]);
   const [budget, setBudget] = useState<number>(0);
+  const [showFlow, setShowFlow] = useState(true);
   // localStorage 読み込み完了フラグ（読み込み前の初期値で保存して上書きしないため）
   const [loaded, setLoaded] = useState(false);
 
@@ -252,10 +253,25 @@ export default function Home() {
             depthCm={roomSize.depthCm}
             placedItems={placedItems}
             openings={openings}
-            flowPaths={flowPaths}
+            flowPaths={showFlow ? flowPaths : []}
             onMove={handleMove}
             onRemove={handleRemove}
           />
+          {flowPaths.length > 0 && (
+            <label className="flex w-full items-center gap-2 rounded-md border border-stone-200 bg-white px-3 py-2 text-sm text-stone-600">
+              <input
+                type="checkbox"
+                checked={showFlow}
+                onChange={(e) => setShowFlow(e.target.checked)}
+                className="h-4 w-4"
+              />
+              <span
+                className="inline-block h-1 w-6 shrink-0 rounded"
+                style={{ background: "#059669" }}
+              />
+              生活動線（入口間の通路）を表示
+            </label>
+          )}
           {blockedWindowCount > 0 && (
             <div className="w-full rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
               ⚠️ 窓の前に家具があります（{blockedWindowCount}箇所）。窓を塞いでいないか確認してください。
