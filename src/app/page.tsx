@@ -9,6 +9,7 @@ import ProposalPanel from "@/components/ProposalPanel";
 import type { FurniturePreset } from "@/components/furnitureCatalog";
 import type { PlacedItem, Opening } from "@/components/RoomCanvas";
 import { FURNITURE_PALETTE } from "@/components/furniturePalette";
+import { doorClearanceRects, type ClearRect } from "@/components/clearance";
 
 // 既存の家具と重ならない配置位置（cm）を探す。空きが無ければ左上へ。
 function findFreePosition(
@@ -16,8 +17,18 @@ function findFreePosition(
   roomW: number,
   roomD: number,
   itemW: number,
-  itemD: number
+  itemD: number,
+  avoid: ClearRect[]
 ): { x: number; y: number } {
+  const overlaps = (
+    x: number,
+    y: number,
+    rx: number,
+    ry: number,
+    rw: number,
+    rd: number
+  ) => !(x + itemW <= rx || x >= rx + rw || y + itemD <= ry || y >= ry + rd);
+
   const cols = Math.max(1, Math.floor(roomW / itemW));
   const rows = Math.max(1, Math.floor(roomD / itemD));
   for (let r = 0; r < rows; r++) {
@@ -25,15 +36,9 @@ function findFreePosition(
       const x = c * itemW;
       const y = r * itemD;
       if (x + itemW > roomW || y + itemD > roomD) continue;
-      const hit = items.some(
-        (i) =>
-          !(
-            x + itemW <= i.xCm ||
-            x >= i.xCm + i.widthCm ||
-            y + itemD <= i.yCm ||
-            y >= i.yCm + i.depthCm
-          )
-      );
+      const hit =
+        items.some((i) => overlaps(x, y, i.xCm, i.yCm, i.widthCm, i.depthCm)) ||
+        avoid.some((a) => overlaps(x, y, a.xCm, a.yCm, a.widthCm, a.depthCm));
       if (!hit) return { x, y };
     }
   }
@@ -100,7 +105,8 @@ export default function Home() {
         roomSize.widthCm,
         roomSize.depthCm,
         preset.widthCm,
-        preset.depthCm
+        preset.depthCm,
+        doorClearanceRects(openings, roomSize.widthCm, roomSize.depthCm)
       );
       // 同じ種類の中での連番
       const num = prev.filter((i) => i.type === preset.type).length + 1;

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Stage, Layer, Rect, Text, Group, Line } from "react-konva";
 import type Konva from "konva";
 import { FURNITURE_PALETTE } from "./furniturePalette";
+import { doorClearanceRects } from "./clearance";
 
 const MAX_WIDTH = 700;
 const ASPECT = 500 / 700; // 高さ / 幅
@@ -83,6 +84,9 @@ export default function RoomCanvas({
           const roomX = (stageWidth - roomWidth) / 2;
           const roomY = (stageHeight - roomDepth) / 2;
 
+          // 入口前のクリアランス帯（家具を置けない領域）
+          const clearanceRects = doorClearanceRects(openings, widthCm, depthCm);
+
           return (
             <Stage
               width={stageWidth}
@@ -119,6 +123,19 @@ export default function RoomCanvas({
                   fill="#57534e"
                   rotation={-90}
                 />
+
+                {clearanceRects.map((r, i) => (
+                  <Rect
+                    key={`clr-${i}`}
+                    x={roomX + r.xCm * scale}
+                    y={roomY + r.yCm * scale}
+                    width={r.widthCm * scale}
+                    height={r.depthCm * scale}
+                    fill="#f97316"
+                    opacity={0.12}
+                    listening={false}
+                  />
+                ))}
 
                 {openings.map((op) => {
                   const wallLen =
@@ -170,7 +187,18 @@ export default function RoomCanvas({
                         dragRef.current = { x: clampedXCm, y: clampedYCm };
                       }}
                       dragBoundFunc={(pos) => {
-                        const others = placedItems.filter((o) => o.uid !== item.uid);
+                        // 他の家具＋入口前クリアランス帯を障害物として扱う
+                        const others = [
+                          ...placedItems
+                            .filter((o) => o.uid !== item.uid)
+                            .map((o) => ({
+                              xCm: o.xCm,
+                              yCm: o.yCm,
+                              widthCm: o.widthCm,
+                              depthCm: o.depthCm,
+                            })),
+                          ...clearanceRects,
+                        ];
                         const iw = item.widthCm;
                         const id = item.depthCm;
                         const prev = dragRef.current ?? { x: clampedXCm, y: clampedYCm };
