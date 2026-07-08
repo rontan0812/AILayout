@@ -4,9 +4,10 @@ import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import RoomSizeForm, { type RoomSize } from "@/components/RoomSizeForm";
 import FurniturePresetPanel from "@/components/FurniturePresetPanel";
+import OpeningPanel from "@/components/OpeningPanel";
 import ProposalPanel from "@/components/ProposalPanel";
 import type { FurniturePreset } from "@/components/furnitureCatalog";
-import type { PlacedItem } from "@/components/RoomCanvas";
+import type { PlacedItem, Opening } from "@/components/RoomCanvas";
 import { FURNITURE_PALETTE } from "@/components/furniturePalette";
 
 // 既存の家具と重ならない配置位置（cm）を探す。空きが無ければ左上へ。
@@ -54,6 +55,7 @@ const STORAGE_KEY = "ailayout-v2";
 export default function Home() {
   const [roomSize, setRoomSize] = useState<RoomSize>({ widthCm: 360, depthCm: 270 });
   const [placedItems, setPlacedItems] = useState<PlacedItem[]>([]);
+  const [openings, setOpenings] = useState<Opening[]>([]);
   const [budget, setBudget] = useState<number>(0);
   // localStorage 読み込み完了フラグ（読み込み前の初期値で保存して上書きしないため）
   const [loaded, setLoaded] = useState(false);
@@ -68,6 +70,7 @@ export default function Home() {
         const saved = JSON.parse(raw);
         if (saved.roomSize) setRoomSize(saved.roomSize);
         if (Array.isArray(saved.placedItems)) setPlacedItems(saved.placedItems);
+        if (Array.isArray(saved.openings)) setOpenings(saved.openings);
         if (typeof saved.budget === "number") setBudget(saved.budget);
       }
     } catch {
@@ -81,11 +84,14 @@ export default function Home() {
   useEffect(() => {
     if (!loaded) return;
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ roomSize, placedItems, budget }));
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({ roomSize, placedItems, openings, budget })
+      );
     } catch {
       // 保存に失敗しても致命的ではないので無視
     }
-  }, [roomSize, placedItems, budget, loaded]);
+  }, [roomSize, placedItems, openings, budget, loaded]);
 
   const handlePlacePreset = (preset: FurniturePreset) => {
     setPlacedItems((prev) => {
@@ -141,6 +147,25 @@ export default function Home() {
     );
   };
 
+  const handleAddOpening = (opening: Omit<Opening, "id">) => {
+    // 幅と中心位置を壁の長さに収める
+    const wallLen =
+      opening.wall === "top" || opening.wall === "bottom"
+        ? roomSize.widthCm
+        : roomSize.depthCm;
+    const widthCm = Math.max(10, Math.min(Math.round(opening.widthCm), wallLen));
+    const half = widthCm / 2;
+    const offsetCm = Math.min(Math.max(Math.round(opening.offsetCm), half), wallLen - half);
+    setOpenings((prev) => [
+      ...prev,
+      { id: crypto.randomUUID(), wall: opening.wall, kind: opening.kind, widthCm, offsetCm },
+    ]);
+  };
+
+  const handleRemoveOpening = (id: string) => {
+    setOpenings((prev) => prev.filter((o) => o.id !== id));
+  };
+
   const handleRotate = (uid: string) => {
     // 90°回転＝横と奥行を入れ替える（四角い枠なのでこれで十分）
     setPlacedItems((prev) =>
@@ -189,6 +214,7 @@ export default function Home() {
             widthCm={roomSize.widthCm}
             depthCm={roomSize.depthCm}
             placedItems={placedItems}
+            openings={openings}
             onMove={handleMove}
             onRemove={handleRemove}
           />
@@ -264,7 +290,14 @@ export default function Home() {
             </div>
           )}
         </div>
-        <FurniturePresetPanel onPlace={handlePlacePreset} />
+        <div className="flex w-full max-w-md flex-col gap-6 lg:w-72">
+          <FurniturePresetPanel onPlace={handlePlacePreset} />
+          <OpeningPanel
+            openings={openings}
+            onAdd={handleAddOpening}
+            onRemove={handleRemoveOpening}
+          />
+        </div>
       </div>
       <ProposalPanel placedItems={placedItems} budget={budget} />
     </main>

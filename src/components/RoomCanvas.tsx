@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Stage, Layer, Rect, Text, Group } from "react-konva";
+import { Stage, Layer, Rect, Text, Group, Line } from "react-konva";
 import type Konva from "konva";
 import { FURNITURE_PALETTE } from "./furniturePalette";
 
@@ -21,10 +21,20 @@ export type PlacedItem = {
   yCm: number;
 };
 
+// 壁の辺に置く開口部（入口/窓）
+export type Opening = {
+  id: string;
+  wall: "top" | "bottom" | "left" | "right";
+  kind: "door" | "window";
+  offsetCm: number; // 壁の始点からの中心位置
+  widthCm: number;
+};
+
 type RoomCanvasProps = {
   widthCm: number;
   depthCm: number;
   placedItems: PlacedItem[];
+  openings: Opening[];
   onMove: (uid: string, xCm: number, yCm: number) => void;
   onRemove: (uid: string) => void;
 };
@@ -33,6 +43,7 @@ export default function RoomCanvas({
   widthCm,
   depthCm,
   placedItems,
+  openings,
   onMove,
   onRemove,
 }: RoomCanvasProps) {
@@ -108,6 +119,36 @@ export default function RoomCanvas({
                   fill="#57534e"
                   rotation={-90}
                 />
+
+                {openings.map((op) => {
+                  const wallLen =
+                    op.wall === "top" || op.wall === "bottom" ? widthCm : depthCm;
+                  const half = op.widthCm / 2;
+                  const center = Math.min(Math.max(op.offsetCm, half), wallLen - half);
+                  const start = center - half;
+                  const end = center + half;
+                  let points: number[];
+                  if (op.wall === "top") {
+                    points = [roomX + start * scale, roomY, roomX + end * scale, roomY];
+                  } else if (op.wall === "bottom") {
+                    const y = roomY + roomDepth;
+                    points = [roomX + start * scale, y, roomX + end * scale, y];
+                  } else if (op.wall === "left") {
+                    points = [roomX, roomY + start * scale, roomX, roomY + end * scale];
+                  } else {
+                    const x = roomX + roomWidth;
+                    points = [x, roomY + start * scale, x, roomY + end * scale];
+                  }
+                  return (
+                    <Line
+                      key={op.id}
+                      points={points}
+                      stroke={op.kind === "door" ? "#c2410c" : "#0369a1"}
+                      strokeWidth={6}
+                      lineCap="round"
+                    />
+                  );
+                })}
 
                 {placedItems.map((item, index) => {
                   const color = FURNITURE_PALETTE[index % FURNITURE_PALETTE.length];
