@@ -68,8 +68,11 @@ export default function ProposalPanel({ placedItems, budget }: ProposalPanelProp
         const maxW = Math.max(...blocks.map((b) => b.widthCm));
         const maxD = Math.max(...blocks.map((b) => b.depthCm));
         const merged = new Map<string, FurnitureItem>();
+        const style = requestText.trim();
         for (const kw of searchKeywordsFor(type)) {
-          const items = await fetchItems(kw, maxW, maxD);
+          // 要望（スタイル・色・ブランド等）があれば検索語に足して絞り込む
+          const query = style ? `${kw} ${style}` : kw;
+          const items = await fetchItems(query, maxW, maxD);
           for (const it of items) {
             if (!merged.has(it.id)) merged.set(it.id, it);
           }
@@ -180,7 +183,7 @@ export default function ProposalPanel({ placedItems, budget }: ProposalPanelProp
           />
         </label>
         <p className="text-xs text-stone-400">
-          ※要望は次の提案から反映されます（順次対応中）。
+          ※要望を変えたら「予算内で提案する」を押すと反映されます。
         </p>
       </div>
 
