@@ -212,12 +212,50 @@ export default function ProposalPanel({ placedItems, budget }: ProposalPanelProp
   const total =
     assignments?.reduce((sum, a) => sum + (a.product?.price ?? 0), 0) ?? 0;
   const overBudget = budget > 0 && total > budget;
+  const hasProducts = !!assignments?.some((a) => a.product);
+
+  // 提案を買い物リスト（CSV）としてダウンロードする
+  const exportShoppingList = () => {
+    if (!assignments) return;
+    const esc = (v: string | number) => `"${String(v).replace(/"/g, '""')}"`;
+    const header = ["枠", "商品名", "価格(円)", "幅cm", "奥行cm", "URL"];
+    const rows = assignments
+      .filter((a) => a.product)
+      .map((a) => [
+        `${a.block.type}${a.block.num}`,
+        a.product!.name,
+        a.product!.price,
+        a.product!.widthCm ?? "",
+        a.product!.depthCm ?? "",
+        a.product!.url,
+      ]);
+    const lines = [header, ...rows].map((r) => r.map(esc).join(","));
+    lines.push([esc("合計"), "", esc(total), "", "", ""].join(","));
+    // Excelで文字化けしないよう先頭にBOMを付ける
+    const csv = "﻿" + lines.join("\r\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "shopping-list.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <section className="flex w-full max-w-5xl flex-col gap-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-lg font-semibold text-stone-800">予算内の家具を提案</h2>
         <div className="flex items-center gap-2">
+          {hasProducts && !loading && (
+            <button
+              type="button"
+              onClick={exportShoppingList}
+              className="rounded-md border border-stone-300 px-3 py-2 text-sm text-stone-600 hover:bg-stone-100"
+            >
+              買い物リスト(CSV)
+            </button>
+          )}
           {assignments && !loading && (
             <button
               type="button"
