@@ -7,6 +7,9 @@ import { FURNITURE_PALETTE } from "./furniturePalette";
 import { searchKeywordsFor } from "./furnitureCatalog";
 import { PROPOSAL_KEY } from "./storageKeys";
 
+// 枠は目安なので、少し大きい商品も「収まる」とみなす許容(cm)
+const FIT_MARGIN_CM = 15;
+
 type ProposalPanelProps = {
   placedItems: PlacedItem[];
   budget: number;
@@ -132,8 +135,8 @@ export default function ProposalPanel({ placedItems, budget }: ProposalPanelProp
             (p) =>
               p.widthCm !== null &&
               p.depthCm !== null &&
-              p.widthCm <= block.widthCm &&
-              p.depthCm <= block.depthCm
+              p.widthCm <= block.widthCm + FIT_MARGIN_CM &&
+              p.depthCm <= block.depthCm + FIT_MARGIN_CM
           )
           .sort((a, b) => a.price - b.price);
         blockCands.push(fitting);
@@ -353,7 +356,9 @@ export default function ProposalPanel({ placedItems, budget }: ProposalPanelProp
                       <>
                         {a.oversize && (
                           <span className="w-fit rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-800">
-                            枠に収まる商品がないため、最も近いサイズ
+                            {a.product.widthCm !== null && a.product.depthCm !== null
+                              ? "枠に収まる商品がないため、最も近いサイズ"
+                              : "サイズ不明のため参考として表示"}
                           </span>
                         )}
                         <a
