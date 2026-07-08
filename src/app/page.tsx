@@ -9,7 +9,12 @@ import ProposalPanel from "@/components/ProposalPanel";
 import type { FurniturePreset } from "@/components/furnitureCatalog";
 import type { PlacedItem, Opening } from "@/components/RoomCanvas";
 import { FURNITURE_PALETTE } from "@/components/furniturePalette";
-import { doorClearanceRects, type ClearRect } from "@/components/clearance";
+import {
+  doorClearanceRects,
+  openingFrontRect,
+  WINDOW_FRONT_CM,
+  type ClearRect,
+} from "@/components/clearance";
 
 // 既存の家具と重ならない配置位置（cm）を探す。空きが無ければ左上へ。
 function findFreePosition(
@@ -185,6 +190,22 @@ export default function Home() {
     );
   };
 
+  // 窓の前に家具が重なっているか（塞ぎ警告用）
+  const blockedWindowCount = openings
+    .filter((op) => op.kind === "window")
+    .filter((op) => {
+      const r = openingFrontRect(op, roomSize.widthCm, roomSize.depthCm, WINDOW_FRONT_CM);
+      return placedItems.some(
+        (i) =>
+          !(
+            i.xCm + i.widthCm <= r.xCm ||
+            i.xCm >= r.xCm + r.widthCm ||
+            i.yCm + i.depthCm <= r.yCm ||
+            i.yCm >= r.yCm + r.depthCm
+          )
+      );
+    }).length;
+
   const sizeInputClass =
     "w-14 rounded border border-stone-300 px-1 py-0.5 text-right text-xs text-stone-800 focus:border-blue-500 focus:outline-none";
 
@@ -224,6 +245,11 @@ export default function Home() {
             onMove={handleMove}
             onRemove={handleRemove}
           />
+          {blockedWindowCount > 0 && (
+            <div className="w-full rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              ⚠️ 窓の前に家具があります（{blockedWindowCount}箇所）。窓を塞いでいないか確認してください。
+            </div>
+          )}
           {placedItems.length > 0 && (
             <div className="flex w-full flex-col gap-2">
               <ul className="flex flex-col gap-1.5">
