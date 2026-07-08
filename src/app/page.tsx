@@ -199,6 +199,19 @@ export default function Home() {
     setOpenings((prev) => prev.filter((o) => o.id !== id));
   };
 
+  const handleMoveOpening = (id: string, offsetCm: number) => {
+    setOpenings((prev) =>
+      prev.map((o) => {
+        if (o.id !== id) return o;
+        const wallLen =
+          o.wall === "top" || o.wall === "bottom" ? roomSize.widthCm : roomSize.depthCm;
+        const half = o.widthCm / 2;
+        const clamped = Math.min(Math.max(Math.round(offsetCm), half), wallLen - half);
+        return { ...o, offsetCm: clamped };
+      })
+    );
+  };
+
   const handleRotate = (uid: string) => {
     // 90°回転＝横と奥行を入れ替える（四角い枠なのでこれで十分）
     setPlacedItems((prev) =>
@@ -313,6 +326,7 @@ export default function Home() {
                 roomPolygon={roomPolygon}
                 onMove={handleMove}
                 onRemove={handleRemove}
+                onMoveOpening={handleMoveOpening}
               />
               {showFlow && flowPaths.some((p) => p.narrow.some((n) => n)) && (
                 <div className="w-full rounded-md border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800">
@@ -430,6 +444,7 @@ export default function Home() {
           <FurniturePresetPanel onPlace={handlePlacePreset} />
           <OpeningPanel
             openings={openings}
+            roomSize={roomSize}
             onAdd={handleAddOpening}
             onRemove={handleRemoveOpening}
           />

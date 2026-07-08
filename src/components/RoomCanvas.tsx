@@ -42,6 +42,7 @@ type RoomCanvasProps = {
   roomPolygon: { xCm: number; yCm: number }[];
   onMove: (uid: string, xCm: number, yCm: number) => void;
   onRemove: (uid: string) => void;
+  onMoveOpening: (id: string, offsetCm: number) => void;
 };
 
 export default function RoomCanvas({
@@ -53,6 +54,7 @@ export default function RoomCanvas({
   roomPolygon,
   onMove,
   onRemove,
+  onMoveOpening,
 }: RoomCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [stageWidth, setStageWidth] = useState(MAX_WIDTH);
@@ -146,32 +148,72 @@ export default function RoomCanvas({
                 ))}
 
                 {openings.map((op) => {
-                  const wallLen =
-                    op.wall === "top" || op.wall === "bottom" ? widthCm : depthCm;
+                  const horizontal = op.wall === "top" || op.wall === "bottom";
+                  const wallLen = horizontal ? widthCm : depthCm;
                   const half = op.widthCm / 2;
                   const center = Math.min(Math.max(op.offsetCm, half), wallLen - half);
-                  const start = center - half;
-                  const end = center + half;
-                  let points: number[];
+                  const halfPx = half * scale;
+                  const color = op.kind === "door" ? "#c2410c" : "#0369a1";
+                  // 壁の辺上の中心座標（この点にGroupを置き、ドラッグで辺に沿って動かす）
+                  let cx: number;
+                  let cy: number;
                   if (op.wall === "top") {
-                    points = [roomX + start * scale, roomY, roomX + end * scale, roomY];
+                    cx = roomX + center * scale;
+                    cy = roomY;
                   } else if (op.wall === "bottom") {
-                    const y = roomY + roomDepth;
-                    points = [roomX + start * scale, y, roomX + end * scale, y];
+                    cx = roomX + center * scale;
+                    cy = roomY + roomDepth;
                   } else if (op.wall === "left") {
-                    points = [roomX, roomY + start * scale, roomX, roomY + end * scale];
+                    cx = roomX;
+                    cy = roomY + center * scale;
                   } else {
-                    const x = roomX + roomWidth;
-                    points = [x, roomY + start * scale, x, roomY + end * scale];
+                    cx = roomX + roomWidth;
+                    cy = roomY + center * scale;
                   }
                   return (
-                    <Line
+                    <Group
                       key={op.id}
-                      points={points}
-                      stroke={op.kind === "door" ? "#c2410c" : "#0369a1"}
-                      strokeWidth={6}
-                      lineCap="round"
-                    />
+                      x={cx}
+                      y={cy}
+                      draggable
+                      onMouseEnter={(e) => {
+                        const c = e.target.getStage()?.container();
+                        if (c) c.style.cursor = "grab";
+                      }}
+                      onMouseLeave={(e) => {
+                        const c = e.target.getStage()?.container();
+                        if (c) c.style.cursor = "default";
+                      }}
+                      dragBoundFunc={(pos) => {
+                        // 開口部は自分の壁の辺上だけを動ける。中心が [half, wallLen-half] に収まるよう制限。
+                        if (horizontal) {
+                          const minX = roomX + halfPx;
+                          const maxX = roomX + roomWidth - halfPx;
+                          return { x: Math.min(Math.max(pos.x, minX), maxX), y: cy };
+                        }
+                        const minY = roomY + halfPx;
+                        const maxY = roomY + roomDepth - halfPx;
+                        return { x: cx, y: Math.min(Math.max(pos.y, minY), maxY) };
+                      }}
+                      onDragEnd={(e: Konva.KonvaEventObject<DragEvent>) => {
+                        const node = e.target;
+                        const offset = horizontal
+                          ? (node.x() - roomX) / scale
+                          : (node.y() - roomY) / scale;
+                        onMoveOpening(op.id, offset);
+                      }}
+                    >
+                      {/* 掴みやすいマーカー。辺に沿った太線＋つまみ。 */}
+                      <Rect
+                        x={horizontal ? -halfPx : -5}
+                        y={horizontal ? -5 : -halfPx}
+                        width={horizontal ? halfPx * 2 : 10}
+                        height={horizontal ? 10 : halfPx * 2}
+                        fill={color}
+                        cornerRadius={5}
+                      />
+                      <Circle radius={7} fill="#ffffff" stroke={color} strokeWidth={2} />
+                    </Group>
                   );
                 })}
 
