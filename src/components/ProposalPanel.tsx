@@ -109,14 +109,16 @@ export default function ProposalPanel({ placedItems, budget }: ProposalPanelProp
       const byType: Record<string, FurnitureItem[]> = {};
       for (const type of types) {
         const blocks = targetItems.filter((b) => b.type === type);
-        const maxW = Math.max(...blocks.map((b) => b.widthCm));
-        const maxD = Math.max(...blocks.map((b) => b.depthCm));
+        // 家具は回して置けるので、向きに依存しないよう大きい方の寸法で絞る
+        const maxDim = Math.max(
+          ...blocks.map((b) => Math.max(b.widthCm, b.depthCm))
+        );
         const merged = new Map<string, FurnitureItem>();
         const style = requestText.trim();
         for (const kw of searchKeywordsFor(type)) {
           // 要望（スタイル・色・ブランド等）があれば検索語に足して絞り込む
           const query = style ? `${kw} ${style}` : kw;
-          const items = await fetchItems(query, maxW, maxD);
+          const items = await fetchItems(query, maxDim, maxDim);
           for (const it of items) {
             if (!merged.has(it.id)) merged.set(it.id, it);
           }
@@ -130,29 +132,31 @@ export default function ProposalPanel({ placedItems, budget }: ProposalPanelProp
       const fallbackProducts: (FurnitureItem | null)[] = [];
       for (const block of targetItems) {
         const cands = byType[block.type] ?? [];
-        const fitting = cands
-          .filter(
-            (p) =>
-              p.widthCm !== null &&
-              p.depthCm !== null &&
-              p.widthCm <= block.widthCm + FIT_MARGIN_CM &&
-              p.depthCm <= block.depthCm + FIT_MARGIN_CM
-          )
-          .sort((a, b) => a.price - b.price);
+        // 家具は回して置けるので、どちらの向きでも収まればOKとする（向き非依存）
+        const bw = block.widthCm + FIT_MARGIN_CM;
+        const bd = block.depthCm + FIT_MARGIN_CM;
+        const fits = (p: FurnitureItem) => {
+          if (p.widthCm === null || p.depthCm === null) return false;
+          return (
+            (p.widthCm <= bw && p.depthCm <= bd) ||
+            (p.widthCm <= bd && p.depthCm <= bw)
+          );
+        };
+        // サイズ差（向きを合わせた方の小さい方）
+        const sizeDist = (p: FurnitureItem) => {
+          const w = p.widthCm as number;
+          const d = p.depthCm as number;
+          const d1 = Math.abs(w - block.widthCm) + Math.abs(d - block.depthCm);
+          const d2 = Math.abs(w - block.depthCm) + Math.abs(d - block.widthCm);
+          return Math.min(d1, d2);
+        };
+        const fitting = cands.filter(fits).sort((a, b) => a.price - b.price);
         blockCands.push(fitting);
         if (fitting.length === 0) {
           // サイズが分かる候補があれば、枠との差が最小のものを選ぶ
           const sized = cands.filter((p) => p.widthCm !== null && p.depthCm !== null);
           if (sized.length > 0) {
-            sized.sort((a, b) => {
-              const da =
-                Math.abs((a.widthCm as number) - block.widthCm) +
-                Math.abs((a.depthCm as number) - block.depthCm);
-              const db =
-                Math.abs((b.widthCm as number) - block.widthCm) +
-                Math.abs((b.depthCm as number) - block.depthCm);
-              return da - db;
-            });
+            sized.sort((a, b) => sizeDist(a) - sizeDist(b));
             fallbackProducts.push(sized[0]);
           } else if (cands.length > 0) {
             // サイズ不明でも、最も安い候補を出す（候補なしにしない）
