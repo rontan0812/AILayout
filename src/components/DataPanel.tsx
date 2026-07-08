@@ -45,6 +45,7 @@ export default function DataPanel() {
           STORAGE_KEY,
           JSON.stringify({
             roomSize: data.roomSize,
+            roomShape: data.roomShape,
             placedItems: Array.isArray(data.placedItems) ? data.placedItems : [],
             openings: Array.isArray(data.openings) ? data.openings : [],
             budget: typeof data.budget === "number" ? data.budget : 0,

@@ -7,6 +7,12 @@ import FurniturePresetPanel from "@/components/FurniturePresetPanel";
 import OpeningPanel from "@/components/OpeningPanel";
 import ProposalPanel from "@/components/ProposalPanel";
 import DataPanel from "@/components/DataPanel";
+import RoomShapePanel from "@/components/RoomShapePanel";
+import {
+  DEFAULT_ROOM_SHAPE,
+  roomPolygon as computeRoomPolygon,
+  type RoomShape,
+} from "@/components/roomShape";
 import { STORAGE_KEY } from "@/components/storageKeys";
 import { computeFlowPaths, FLOW_MIN_WIDTH_CM } from "@/components/flowline";
 import type { FurniturePreset } from "@/components/furnitureCatalog";
@@ -75,6 +81,7 @@ const Room3D = dynamic(() => import("@/components/Room3D"), {
 
 export default function Home() {
   const [roomSize, setRoomSize] = useState<RoomSize>({ widthCm: 360, depthCm: 270 });
+  const [roomShape, setRoomShape] = useState<RoomShape>(DEFAULT_ROOM_SHAPE);
   const [placedItems, setPlacedItems] = useState<PlacedItem[]>([]);
   const [openings, setOpenings] = useState<Opening[]>([]);
   const [budget, setBudget] = useState<number>(0);
@@ -92,6 +99,7 @@ export default function Home() {
       if (raw) {
         const saved = JSON.parse(raw);
         if (saved.roomSize) setRoomSize(saved.roomSize);
+        if (saved.roomShape) setRoomShape(saved.roomShape);
         if (Array.isArray(saved.placedItems)) setPlacedItems(saved.placedItems);
         if (Array.isArray(saved.openings)) setOpenings(saved.openings);
         if (typeof saved.budget === "number") setBudget(saved.budget);
@@ -109,12 +117,12 @@ export default function Home() {
     try {
       localStorage.setItem(
         STORAGE_KEY,
-        JSON.stringify({ roomSize, placedItems, openings, budget })
+        JSON.stringify({ roomSize, roomShape, placedItems, openings, budget })
       );
     } catch {
       // 保存に失敗しても致命的ではないので無視
     }
-  }, [roomSize, placedItems, openings, budget, loaded]);
+  }, [roomSize, roomShape, placedItems, openings, budget, loaded]);
 
   const handlePlacePreset = (preset: FurniturePreset, owned: boolean) => {
     setPlacedItems((prev) => {
@@ -228,6 +236,9 @@ export default function Home() {
     openings
   );
 
+  // 部屋の形（矩形/L字）のポリゴン頂点
+  const roomPolygon = computeRoomPolygon(roomShape, roomSize.widthCm, roomSize.depthCm);
+
   const sizeInputClass =
     "w-14 rounded border border-stone-300 px-1 py-0.5 text-right text-xs text-stone-800 focus:border-blue-500 focus:outline-none";
 
@@ -299,6 +310,7 @@ export default function Home() {
                 placedItems={placedItems}
                 openings={openings}
                 flowPaths={showFlow ? flowPaths : []}
+                roomPolygon={roomPolygon}
                 onMove={handleMove}
                 onRemove={handleRemove}
               />
@@ -414,6 +426,7 @@ export default function Home() {
           )}
         </div>
         <div className="flex w-full max-w-md flex-col gap-6 lg:w-72">
+          <RoomShapePanel shape={roomShape} roomSize={roomSize} onChange={setRoomShape} />
           <FurniturePresetPanel onPlace={handlePlacePreset} />
           <OpeningPanel
             openings={openings}

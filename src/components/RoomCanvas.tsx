@@ -39,6 +39,7 @@ type RoomCanvasProps = {
   placedItems: PlacedItem[];
   openings: Opening[];
   flowPaths: FlowPath[];
+  roomPolygon: { xCm: number; yCm: number }[];
   onMove: (uid: string, xCm: number, yCm: number) => void;
   onRemove: (uid: string) => void;
 };
@@ -49,6 +50,7 @@ export default function RoomCanvas({
   placedItems,
   openings,
   flowPaths,
+  roomPolygon,
   onMove,
   onRemove,
 }: RoomCanvasProps) {
@@ -98,14 +100,16 @@ export default function RoomCanvas({
               className="rounded-lg border border-stone-300 bg-white shadow-sm"
             >
               <Layer>
-                <Rect
-                  x={roomX}
-                  y={roomY}
-                  width={roomWidth}
-                  height={roomDepth}
+                <Line
+                  points={roomPolygon.flatMap((p) => [
+                    roomX + p.xCm * scale,
+                    roomY + p.yCm * scale,
+                  ])}
+                  closed
                   fill="#fafaf9"
                   stroke="#57534e"
                   strokeWidth={3}
+                  lineJoin="round"
                 />
                 <Text
                   text={`横 ${widthCm} cm`}
