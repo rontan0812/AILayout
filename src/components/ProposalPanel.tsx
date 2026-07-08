@@ -66,6 +66,12 @@ export default function ProposalPanel({ placedItems, budget }: ProposalPanelProp
     setLoading(true);
     setError(null);
     try {
+      // 所有品（手持ち家具）は購入提案・予算計算の対象外
+      const targetItems = placedItems.filter((b) => !b.owned);
+      if (targetItems.length === 0) {
+        setAssignments([]);
+        return;
+      }
       // 楽天の新APIは約1リクエスト/秒の制限があるため、1件ずつ間隔を空けて叩く。
       const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
       let requestCount = 0;
@@ -97,10 +103,10 @@ export default function ProposalPanel({ placedItems, budget }: ProposalPanelProp
       };
 
       // 種類ごとに、類義語も含めて検索し候補をまとめる（重複はidで除外）
-      const types = [...new Set(placedItems.map((b) => b.type))];
+      const types = [...new Set(targetItems.map((b) => b.type))];
       const byType: Record<string, FurnitureItem[]> = {};
       for (const type of types) {
-        const blocks = placedItems.filter((b) => b.type === type);
+        const blocks = targetItems.filter((b) => b.type === type);
         const maxW = Math.max(...blocks.map((b) => b.widthCm));
         const maxD = Math.max(...blocks.map((b) => b.depthCm));
         const merged = new Map<string, FurnitureItem>();
@@ -120,7 +126,7 @@ export default function ProposalPanel({ placedItems, budget }: ProposalPanelProp
       // 収まる候補が無い枠には、最もサイズが近い候補をフォールバックとして用意する。
       const blockCands: FurnitureItem[][] = [];
       const fallbackProducts: (FurnitureItem | null)[] = [];
-      for (const block of placedItems) {
+      for (const block of targetItems) {
         const cands = byType[block.type] ?? [];
         const fitting = cands
           .filter(
@@ -151,14 +157,14 @@ export default function ProposalPanel({ placedItems, budget }: ProposalPanelProp
       }
 
       // まず各枠に最安を割り当て（収まる候補が無ければフォールバックを使う）
-      const chosen: number[] = placedItems.map((_, idx) =>
+      const chosen: number[] = targetItems.map((_, idx) =>
         blockCands[idx].length ? 0 : -1
       );
       const priceOf = (idx: number) =>
         chosen[idx] >= 0
           ? blockCands[idx][chosen[idx]].price
           : fallbackProducts[idx]?.price ?? 0;
-      let total = placedItems.reduce((s, _, idx) => s + priceOf(idx), 0);
+      let total = targetItems.reduce((s, _, idx) => s + priceOf(idx), 0);
 
       // 「安め優先」でなく、予算があり収まっているなら、予算を使い切る方向にアップグレード
       if (!cheaperFirst && budget > 0 && total <= budget) {
@@ -166,7 +172,7 @@ export default function ProposalPanel({ placedItems, budget }: ProposalPanelProp
         while (improved) {
           improved = false;
           let best: { idx: number; newIdx: number; delta: number } | null = null;
-          for (let idx = 0; idx < placedItems.length; idx++) {
+          for (let idx = 0; idx < targetItems.length; idx++) {
             if (chosen[idx] < 0) continue;
             const cur = priceOf(idx);
             const cands = blockCands[idx];
@@ -189,14 +195,12 @@ export default function ProposalPanel({ placedItems, budget }: ProposalPanelProp
         }
       }
 
-      const result: Assignment[] = placedItems.map((block, index) => ({
+      const result: Assignment[] = targetItems.map((block, idx) => ({
         block,
-        index,
+        index: placedItems.indexOf(block), // 色をキャンバスと合わせる
         product:
-          chosen[index] >= 0
-            ? blockCands[index][chosen[index]]
-            : fallbackProducts[index],
-        oversize: chosen[index] < 0 && fallbackProducts[index] !== null,
+          chosen[idx] >= 0 ? blockCands[idx][chosen[idx]] : fallbackProducts[idx],
+        oversize: chosen[idx] < 0 && fallbackProducts[idx] !== null,
       }));
       setAssignments(result);
     } catch (err) {
@@ -276,7 +280,13 @@ export default function ProposalPanel({ placedItems, budget }: ProposalPanelProp
         </p>
       )}
 
-      {assignments && !loading && !error && (
+      {assignments && assignments.length === 0 && !loading && !error && (
+        <p className="text-sm text-stone-500">
+          提案対象の家具がありません（すべて所有品です）。
+        </p>
+      )}
+
+      {assignments && assignments.length > 0 && !loading && !error && (
         <div className="flex flex-col gap-3">
           <ul className="flex flex-col gap-2">
             {assignments.map((a) => {
