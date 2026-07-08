@@ -1,8 +1,11 @@
 "use client";
 
+import { useMemo } from "react";
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
+import * as THREE from "three";
 import type { PlacedItem, Opening } from "./RoomCanvas";
+import type { PolyPoint } from "./roomShape";
 import { FURNITURE_PALETTE } from "./furniturePalette";
 
 // cm → m
@@ -15,6 +18,7 @@ type Room3DProps = {
   depthCm: number;
   placedItems: PlacedItem[];
   openings: Opening[];
+  roomPolygon: PolyPoint[];
 };
 
 // 家具の種類ごとの高さ(m)。未登録は既定値。
@@ -32,30 +36,63 @@ const HEIGHT_BY_TYPE: Record<string, number> = {
 };
 const heightForType = (t: string) => HEIGHT_BY_TYPE[t] ?? 0.4;
 
-function RoomMesh({ w, d }: { w: number; d: number }) {
+// 部屋のポリゴン（cm・左上原点）を中心原点のワールド座標(m)に変換して床と壁を描く。
+function RoomMesh({
+  polygon,
+  roomWcm,
+  roomDcm,
+}: {
+  polygon: PolyPoint[];
+  roomWcm: number;
+  roomDcm: number;
+}) {
   const wallColor = "#e7e5e4";
+  // ワールド座標の頂点 (X, Z)。床は中心原点で描く。
+  const pts = polygon.map((p) => ({
+    x: (p.xCm - roomWcm / 2) * M,
+    z: (p.yCm - roomDcm / 2) * M,
+  }));
+
+  // 頂点列の内容が変わったときだけ床ジオメトリを作り直すためのキー
+  const polyKey = pts.map((p) => `${p.x.toFixed(4)},${p.z.toFixed(4)}`).join(";");
+
+  // 床（ポリゴン形状）。XY平面のShapeを作り、-90°回転でXZ平面に寝かせる。
+  const floorGeom = useMemo(() => {
+    const shape = new THREE.Shape();
+    pts.forEach((p, i) => {
+      // 回転 -90°(X軸) で local(x,y)→world(x,0,-y) となるため y=-z を渡す
+      if (i === 0) shape.moveTo(p.x, -p.z);
+      else shape.lineTo(p.x, -p.z);
+    });
+    shape.closePath();
+    return new THREE.ShapeGeometry(shape);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [polyKey]);
+
+  // 壁（各辺に沿った薄い箱）
+  const walls = pts.map((p, i) => {
+    const q = pts[(i + 1) % pts.length];
+    const dx = q.x - p.x;
+    const dz = q.z - p.z;
+    const len = Math.hypot(dx, dz);
+    if (len < 1e-6) return null;
+    const midX = (p.x + q.x) / 2;
+    const midZ = (p.z + q.z) / 2;
+    const rotY = -Math.atan2(dz, dx);
+    return (
+      <mesh key={`wall-${i}`} position={[midX, WALL_HEIGHT / 2, midZ]} rotation={[0, rotY, 0]}>
+        <boxGeometry args={[len + WALL_THICK, WALL_HEIGHT, WALL_THICK]} />
+        <meshStandardMaterial color={wallColor} transparent opacity={0.45} />
+      </mesh>
+    );
+  });
+
   return (
     <group>
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]}>
-        <planeGeometry args={[w, d]} />
-        <meshStandardMaterial color="#fafaf9" />
+      <mesh rotation={[-Math.PI / 2, 0, 0]} geometry={floorGeom}>
+        <meshStandardMaterial color="#fafaf9" side={THREE.DoubleSide} />
       </mesh>
-      <mesh position={[0, WALL_HEIGHT / 2, -d / 2]}>
-        <boxGeometry args={[w, WALL_HEIGHT, WALL_THICK]} />
-        <meshStandardMaterial color={wallColor} transparent opacity={0.45} />
-      </mesh>
-      <mesh position={[0, WALL_HEIGHT / 2, d / 2]}>
-        <boxGeometry args={[w, WALL_HEIGHT, WALL_THICK]} />
-        <meshStandardMaterial color={wallColor} transparent opacity={0.45} />
-      </mesh>
-      <mesh position={[-w / 2, WALL_HEIGHT / 2, 0]}>
-        <boxGeometry args={[WALL_THICK, WALL_HEIGHT, d]} />
-        <meshStandardMaterial color={wallColor} transparent opacity={0.45} />
-      </mesh>
-      <mesh position={[w / 2, WALL_HEIGHT / 2, 0]}>
-        <boxGeometry args={[WALL_THICK, WALL_HEIGHT, d]} />
-        <meshStandardMaterial color={wallColor} transparent opacity={0.45} />
-      </mesh>
+      {walls}
     </group>
   );
 }
@@ -137,7 +174,13 @@ function Openings3D({
   );
 }
 
-export default function Room3D({ widthCm, depthCm, placedItems, openings }: Room3DProps) {
+export default function Room3D({
+  widthCm,
+  depthCm,
+  placedItems,
+  openings,
+  roomPolygon,
+}: Room3DProps) {
   const valid =
     Number.isFinite(widthCm) && Number.isFinite(depthCm) && widthCm > 0 && depthCm > 0;
   const w = (valid ? widthCm : 100) * M;
@@ -150,7 +193,7 @@ export default function Room3D({ widthCm, depthCm, placedItems, openings }: Room
         <Canvas camera={{ position: [w * 0.9, span * 1.2, d * 1.4], fov: 50 }}>
           <ambientLight intensity={0.8} />
           <directionalLight position={[5, 10, 5]} intensity={0.8} />
-          <RoomMesh w={w} d={d} />
+          <RoomMesh polygon={roomPolygon} roomWcm={widthCm} roomDcm={depthCm} />
           <Furniture3D items={placedItems} roomWcm={widthCm} roomDcm={depthCm} />
           <Openings3D openings={openings} roomWcm={widthCm} roomDcm={depthCm} />
           <OrbitControls target={[0, 0, 0]} />

@@ -11,6 +11,7 @@ import RoomShapePanel from "@/components/RoomShapePanel";
 import {
   DEFAULT_ROOM_SHAPE,
   roomPolygon as computeRoomPolygon,
+  roomCutRect,
   type RoomShape,
 } from "@/components/roomShape";
 import { STORAGE_KEY } from "@/components/storageKeys";
@@ -124,6 +125,10 @@ export default function Home() {
     }
   }, [roomSize, roomShape, placedItems, openings, budget, loaded]);
 
+  // L字などの欠け領域（家具を置けない部屋外の矩形）
+  const cutRect = roomCutRect(roomShape, roomSize.widthCm, roomSize.depthCm);
+  const blockedRects = cutRect ? [cutRect] : [];
+
   const handlePlacePreset = (preset: FurniturePreset, owned: boolean) => {
     setPlacedItems((prev) => {
       const { x, y } = findFreePosition(
@@ -132,7 +137,7 @@ export default function Home() {
         roomSize.depthCm,
         preset.widthCm,
         preset.depthCm,
-        doorClearanceRects(openings, roomSize.widthCm, roomSize.depthCm)
+        [...doorClearanceRects(openings, roomSize.widthCm, roomSize.depthCm), ...blockedRects]
       );
       // 同じ種類の中での連番
       const num = prev.filter((i) => i.type === preset.type).length + 1;
@@ -246,7 +251,8 @@ export default function Home() {
     roomSize.widthCm,
     roomSize.depthCm,
     placedItems,
-    openings
+    openings,
+    blockedRects
   );
 
   // 部屋の形（矩形/L字）のポリゴン頂点
@@ -324,6 +330,7 @@ export default function Home() {
                 openings={openings}
                 flowPaths={showFlow ? flowPaths : []}
                 roomPolygon={roomPolygon}
+                blockedRects={blockedRects}
                 onMove={handleMove}
                 onRemove={handleRemove}
                 onMoveOpening={handleMoveOpening}
@@ -355,6 +362,7 @@ export default function Home() {
               depthCm={roomSize.depthCm}
               placedItems={placedItems}
               openings={openings}
+              roomPolygon={roomPolygon}
             />
           )}
           {blockedWindowCount > 0 && (

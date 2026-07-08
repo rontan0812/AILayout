@@ -40,6 +40,8 @@ type RoomCanvasProps = {
   openings: Opening[];
   flowPaths: FlowPath[];
   roomPolygon: { xCm: number; yCm: number }[];
+  // 部屋外の欠け領域など、家具を置けない矩形（L字の凹み等）
+  blockedRects: { xCm: number; yCm: number; widthCm: number; depthCm: number }[];
   onMove: (uid: string, xCm: number, yCm: number) => void;
   onRemove: (uid: string) => void;
   onMoveOpening: (id: string, offsetCm: number) => void;
@@ -52,6 +54,7 @@ export default function RoomCanvas({
   openings,
   flowPaths,
   roomPolygon,
+  blockedRects,
   onMove,
   onRemove,
   onMoveOpening,
@@ -237,7 +240,7 @@ export default function RoomCanvas({
                         dragRef.current = { x: clampedXCm, y: clampedYCm };
                       }}
                       dragBoundFunc={(pos) => {
-                        // 他の家具＋入口前クリアランス帯を障害物として扱う
+                        // 他の家具＋入口前クリアランス帯＋部屋外の欠け領域を障害物として扱う
                         const others = [
                           ...placedItems
                             .filter((o) => o.uid !== item.uid)
@@ -248,6 +251,7 @@ export default function RoomCanvas({
                               depthCm: o.depthCm,
                             })),
                           ...clearanceRects,
+                          ...blockedRects,
                         ];
                         const iw = item.widthCm;
                         const id = item.depthCm;
