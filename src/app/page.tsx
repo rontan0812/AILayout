@@ -6,6 +6,8 @@ import RoomSizeForm, { type RoomSize } from "@/components/RoomSizeForm";
 import FurniturePresetPanel from "@/components/FurniturePresetPanel";
 import OpeningPanel from "@/components/OpeningPanel";
 import ProposalPanel from "@/components/ProposalPanel";
+import DataPanel from "@/components/DataPanel";
+import { STORAGE_KEY } from "@/components/storageKeys";
 import type { FurniturePreset } from "@/components/furnitureCatalog";
 import type { PlacedItem, Opening } from "@/components/RoomCanvas";
 import { FURNITURE_PALETTE } from "@/components/furniturePalette";
@@ -59,8 +61,6 @@ const RoomCanvas = dynamic(() => import("@/components/RoomCanvas"), {
     </div>
   ),
 });
-
-const STORAGE_KEY = "ailayout-v2";
 
 export default function Home() {
   const [roomSize, setRoomSize] = useState<RoomSize>({ widthCm: 360, depthCm: 270 });
@@ -335,6 +335,7 @@ export default function Home() {
             onAdd={handleAddOpening}
             onRemove={handleRemoveOpening}
           />
+          <DataPanel />
         </div>
       </div>
       <ProposalPanel placedItems={placedItems} budget={budget} />
