@@ -8,10 +8,11 @@ import OpeningPanel from "@/components/OpeningPanel";
 import ProposalPanel from "@/components/ProposalPanel";
 import DataPanel from "@/components/DataPanel";
 import RoomShapePanel from "@/components/RoomShapePanel";
+import FloorPlanScanPanel from "@/components/FloorPlanScanPanel";
 import {
   DEFAULT_ROOM_SHAPE,
   roomPolygon as computeRoomPolygon,
-  roomCutRect,
+  roomBlockedRects,
   type RoomShape,
 } from "@/components/roomShape";
 import { STORAGE_KEY } from "@/components/storageKeys";
@@ -125,9 +126,8 @@ export default function Home() {
     }
   }, [roomSize, roomShape, placedItems, openings, budget, loaded]);
 
-  // L字などの欠け領域（家具を置けない部屋外の矩形）
-  const cutRect = roomCutRect(roomShape, roomSize.widthCm, roomSize.depthCm);
-  const blockedRects = cutRect ? [cutRect] : [];
+  // 部屋外の欠け領域（家具を置けない矩形。L字の凹みや取り込んだ多角形の外側）
+  const blockedRects = roomBlockedRects(roomShape, roomSize.widthCm, roomSize.depthCm);
 
   const handlePlacePreset = (preset: FurniturePreset, owned: boolean) => {
     setPlacedItems((prev) => {
@@ -449,6 +449,7 @@ export default function Home() {
         </div>
         <div className="flex w-full max-w-md flex-col gap-6 lg:w-72">
           <RoomShapePanel shape={roomShape} roomSize={roomSize} onChange={setRoomShape} />
+          <FloorPlanScanPanel roomSize={roomSize} onDetect={setRoomShape} />
           <FurniturePresetPanel onPlace={handlePlacePreset} />
           <OpeningPanel
             openings={openings}

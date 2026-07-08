@@ -60,6 +60,12 @@ export default function RoomShapePanel({ shape, roomSize, onChange }: RoomShapeP
         </button>
       </div>
 
+      {shape.kind === "poly" && (
+        <p className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-700">
+          間取り図から取り込んだ形状です（頂点{shape.points.length}個）。長方形/L字を選ぶと置き換わります。
+        </p>
+      )}
+
       {isL && (
         <div className="flex flex-col gap-3">
           <label className="flex flex-col gap-1 text-xs text-stone-600">
