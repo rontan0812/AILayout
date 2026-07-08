@@ -5,6 +5,7 @@ import { Stage, Layer, Rect, Text, Group, Line } from "react-konva";
 import type Konva from "konva";
 import { FURNITURE_PALETTE } from "./furniturePalette";
 import { doorClearanceRects } from "./clearance";
+import type { FlowPoint } from "./flowline";
 
 const MAX_WIDTH = 700;
 const ASPECT = 500 / 700; // 高さ / 幅
@@ -37,6 +38,7 @@ type RoomCanvasProps = {
   depthCm: number;
   placedItems: PlacedItem[];
   openings: Opening[];
+  flowPaths: FlowPoint[][];
   onMove: (uid: string, xCm: number, yCm: number) => void;
   onRemove: (uid: string) => void;
 };
@@ -46,6 +48,7 @@ export default function RoomCanvas({
   depthCm,
   placedItems,
   openings,
+  flowPaths,
   onMove,
   onRemove,
 }: RoomCanvasProps) {
@@ -280,6 +283,23 @@ export default function RoomCanvas({
                     </Group>
                   );
                 })}
+
+                {flowPaths.map((path, i) => (
+                  <Line
+                    key={`flow-${i}`}
+                    points={path.flatMap((p) => [
+                      roomX + p.xCm * scale,
+                      roomY + p.yCm * scale,
+                    ])}
+                    stroke="#059669"
+                    strokeWidth={3}
+                    opacity={0.8}
+                    lineCap="round"
+                    lineJoin="round"
+                    dash={[8, 6]}
+                    listening={false}
+                  />
+                ))}
               </Layer>
             </Stage>
           );
