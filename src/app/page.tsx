@@ -63,6 +63,16 @@ const RoomCanvas = dynamic(() => import("@/components/RoomCanvas"), {
   ),
 });
 
+// Three.js もブラウザ専用なので SSR を無効化する
+const Room3D = dynamic(() => import("@/components/Room3D"), {
+  ssr: false,
+  loading: () => (
+    <div className="flex h-[400px] w-full max-w-[700px] items-center justify-center rounded-lg border border-stone-300 bg-white text-stone-400">
+      3Dプレビューを読み込み中...
+    </div>
+  ),
+});
+
 export default function Home() {
   const [roomSize, setRoomSize] = useState<RoomSize>({ widthCm: 360, depthCm: 270 });
   const [placedItems, setPlacedItems] = useState<PlacedItem[]>([]);
@@ -262,6 +272,10 @@ export default function Home() {
               ⚠️ 動線が狭い箇所があります（幅 {FLOW_MIN_WIDTH_CM}cm 未満・赤い区間）。家具の配置を見直すと通りやすくなります。
             </div>
           )}
+          <div className="flex w-full flex-col gap-2">
+            <span className="text-sm font-medium text-stone-700">3Dプレビュー</span>
+            <Room3D widthCm={roomSize.widthCm} depthCm={roomSize.depthCm} />
+          </div>
           {flowPaths.length > 0 && (
             <label className="flex w-full items-center gap-2 rounded-md border border-stone-200 bg-white px-3 py-2 text-sm text-stone-600">
               <input
