@@ -15,6 +15,7 @@ type Assignment = {
   block: PlacedItem;
   index: number; // placedItems内の並び順（色をキャンバスと合わせるため）
   product: FurnitureItem | null;
+  oversize: boolean; // 枠に収まらないが最も近いサイズを採用した場合 true
 };
 
 export default function ProposalPanel({ placedItems, budget }: ProposalPanelProps) {
@@ -80,9 +81,13 @@ export default function ProposalPanel({ placedItems, budget }: ProposalPanelProp
         byType[type] = [...merged.values()];
       }
 
-      // 各枠が置ける候補（枠サイズに収まる）を安い順に用意
-      const blockCands: FurnitureItem[][] = placedItems.map((block) =>
-        (byType[block.type] ?? [])
+      // 各枠が置ける候補（枠サイズに収まる）を安い順に用意。
+      // 収まる候補が無い枠には、最もサイズが近い候補をフォールバックとして用意する。
+      const blockCands: FurnitureItem[][] = [];
+      const fallbackProducts: (FurnitureItem | null)[] = [];
+      for (const block of placedItems) {
+        const cands = byType[block.type] ?? [];
+        const fitting = cands
           .filter(
             (p) =>
               p.widthCm !== null &&
@@ -90,15 +95,34 @@ export default function ProposalPanel({ placedItems, budget }: ProposalPanelProp
               p.widthCm <= block.widthCm &&
               p.depthCm <= block.depthCm
           )
-          .sort((a, b) => a.price - b.price)
-      );
+          .sort((a, b) => a.price - b.price);
+        blockCands.push(fitting);
+        if (fitting.length === 0) {
+          // サイズが分かる候補の中から、枠との差が最小のものを選ぶ
+          const sized = cands.filter((p) => p.widthCm !== null && p.depthCm !== null);
+          sized.sort((a, b) => {
+            const da =
+              Math.abs((a.widthCm as number) - block.widthCm) +
+              Math.abs((a.depthCm as number) - block.depthCm);
+            const db =
+              Math.abs((b.widthCm as number) - block.widthCm) +
+              Math.abs((b.depthCm as number) - block.depthCm);
+            return da - db;
+          });
+          fallbackProducts.push(sized[0] ?? null);
+        } else {
+          fallbackProducts.push(null);
+        }
+      }
 
-      // まず各枠に最安を割り当て
+      // まず各枠に最安を割り当て（収まる候補が無ければフォールバックを使う）
       const chosen: number[] = placedItems.map((_, idx) =>
         blockCands[idx].length ? 0 : -1
       );
       const priceOf = (idx: number) =>
-        chosen[idx] >= 0 ? blockCands[idx][chosen[idx]].price : 0;
+        chosen[idx] >= 0
+          ? blockCands[idx][chosen[idx]].price
+          : fallbackProducts[idx]?.price ?? 0;
       let total = placedItems.reduce((s, _, idx) => s + priceOf(idx), 0);
 
       // 「安め優先」でなく、予算があり収まっているなら、予算を使い切る方向にアップグレード
@@ -133,7 +157,11 @@ export default function ProposalPanel({ placedItems, budget }: ProposalPanelProp
       const result: Assignment[] = placedItems.map((block, index) => ({
         block,
         index,
-        product: chosen[index] >= 0 ? blockCands[index][chosen[index]] : null,
+        product:
+          chosen[index] >= 0
+            ? blockCands[index][chosen[index]]
+            : fallbackProducts[index],
+        oversize: chosen[index] < 0 && fallbackProducts[index] !== null,
       }));
       setAssignments(result);
     } catch (err) {
@@ -220,6 +248,11 @@ export default function ProposalPanel({ placedItems, budget }: ProposalPanelProp
                     </span>
                     {a.product ? (
                       <>
+                        {a.oversize && (
+                          <span className="w-fit rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-800">
+                            枠に収まる商品がないため、最も近いサイズ
+                          </span>
+                        )}
                         <a
                           href={a.product.url}
                           target="_blank"
