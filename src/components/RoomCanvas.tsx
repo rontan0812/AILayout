@@ -5,7 +5,7 @@ import { Stage, Layer, Rect, Text, Group, Line, Circle } from "react-konva";
 import type Konva from "konva";
 import { FURNITURE_PALETTE } from "./furniturePalette";
 import { doorClearanceRects } from "./clearance";
-import type { FlowPoint } from "./flowline";
+import type { FlowPath } from "./flowline";
 
 const MAX_WIDTH = 700;
 const ASPECT = 500 / 700; // 高さ / 幅
@@ -38,7 +38,7 @@ type RoomCanvasProps = {
   depthCm: number;
   placedItems: PlacedItem[];
   openings: Opening[];
-  flowPaths: FlowPoint[][];
+  flowPaths: FlowPath[];
   onMove: (uid: string, xCm: number, yCm: number) => void;
   onRemove: (uid: string) => void;
 };
@@ -287,7 +287,7 @@ export default function RoomCanvas({
                 {flowPaths.map((path, i) => (
                   <Line
                     key={`flow-${i}`}
-                    points={path.flatMap((p) => [
+                    points={path.points.flatMap((p) => [
                       roomX + p.xCm * scale,
                       roomY + p.yCm * scale,
                     ])}
@@ -301,9 +301,32 @@ export default function RoomCanvas({
                   />
                 ))}
 
+                {/* 幅が基準未満の区間は赤で重ね描き */}
+                {flowPaths.map((path, i) =>
+                  path.points.slice(1).map((p, j) => {
+                    if (!path.narrow[j] && !path.narrow[j + 1]) return null;
+                    const prev = path.points[j];
+                    return (
+                      <Line
+                        key={`flow-narrow-${i}-${j}`}
+                        points={[
+                          roomX + prev.xCm * scale,
+                          roomY + prev.yCm * scale,
+                          roomX + p.xCm * scale,
+                          roomY + p.yCm * scale,
+                        ]}
+                        stroke="#dc2626"
+                        strokeWidth={4}
+                        lineCap="round"
+                        listening={false}
+                      />
+                    );
+                  })
+                )}
+
                 {flowPaths.map((path, i) => {
-                  const a = path[0];
-                  const b = path[path.length - 1];
+                  const a = path.points[0];
+                  const b = path.points[path.points.length - 1];
                   return (
                     <Group key={`flow-end-${i}`} listening={false}>
                       <Circle

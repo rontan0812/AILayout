@@ -8,7 +8,7 @@ import OpeningPanel from "@/components/OpeningPanel";
 import ProposalPanel from "@/components/ProposalPanel";
 import DataPanel from "@/components/DataPanel";
 import { STORAGE_KEY } from "@/components/storageKeys";
-import { computeFlowPaths } from "@/components/flowline";
+import { computeFlowPaths, FLOW_MIN_WIDTH_CM } from "@/components/flowline";
 import type { FurniturePreset } from "@/components/furnitureCatalog";
 import type { PlacedItem, Opening } from "@/components/RoomCanvas";
 import { FURNITURE_PALETTE } from "@/components/furniturePalette";
@@ -257,6 +257,11 @@ export default function Home() {
             onMove={handleMove}
             onRemove={handleRemove}
           />
+          {showFlow && flowPaths.some((p) => p.narrow.some((n) => n)) && (
+            <div className="w-full rounded-md border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800">
+              ⚠️ 動線が狭い箇所があります（幅 {FLOW_MIN_WIDTH_CM}cm 未満・赤い区間）。家具の配置を見直すと通りやすくなります。
+            </div>
+          )}
           {flowPaths.length > 0 && (
             <label className="flex w-full items-center gap-2 rounded-md border border-stone-200 bg-white px-3 py-2 text-sm text-stone-600">
               <input

@@ -2,6 +2,16 @@ import type { PlacedItem, Opening } from "./RoomCanvas";
 
 export type FlowPoint = { xCm: number; yCm: number };
 
+// 動線1本分。points=経路、narrow[i]=その点付近が基準幅未満か、minWidthCm=最小幅。
+export type FlowPath = {
+  points: FlowPoint[];
+  narrow: boolean[];
+  minWidthCm: number;
+};
+
+// 動線として確保したい最小幅（cm）
+export const FLOW_MIN_WIDTH_CM = 60;
+
 // 家具を障害物としたグリッド上で、入口どうしを最短経路で結ぶ生活動線を計算する。
 // 入口が2つ以上あるときに、入口を順につなぐ経路を返す。
 export function computeFlowPaths(
@@ -9,7 +19,7 @@ export function computeFlowPaths(
   roomD: number,
   items: PlacedItem[],
   openings: Opening[]
-): FlowPoint[][] {
+): FlowPath[] {
   const doors = openings.filter((o) => o.kind === "door");
   if (doors.length < 2 || roomW <= 0 || roomD <= 0) return [];
 
@@ -106,10 +116,42 @@ export function computeFlowPaths(
     return path;
   };
 
-  const paths: FlowPoint[][] = [];
+  // その座標が室内の空き（家具でも壁外でもない）か
+  const isFree = (x: number, y: number) => {
+    if (x < 0 || y < 0 || x >= roomW || y >= roomD) return false; // 壁の外
+    return !blocked[idx(Math.floor(x / cell), Math.floor(y / cell))];
+  };
+  const maxRay = Math.hypot(roomW, roomD);
+  // (x,y)から(dx,dy)方向へ、家具か壁に当たるまでの空き距離(cm)
+  const rayDist = (x: number, y: number, dx: number, dy: number) => {
+    const step = 5;
+    let d = 0;
+    while (d < maxRay && isFree(x + dx * (d + step), y + dy * (d + step))) d += step;
+    return d;
+  };
+  // 進行方向に直交する左右の空きスペースの合計 ≈ 動線幅
+  const widthAt = (points: FlowPoint[], j: number) => {
+    const a = points[Math.max(0, j - 1)];
+    const b = points[Math.min(points.length - 1, j + 1)];
+    let dx = b.xCm - a.xCm;
+    let dy = b.yCm - a.yCm;
+    const len = Math.hypot(dx, dy) || 1;
+    dx /= len;
+    dy /= len;
+    const px = -dy; // 直交方向
+    const py = dx;
+    const p = points[j];
+    return rayDist(p.xCm, p.yCm, px, py) + rayDist(p.xCm, p.yCm, -px, -py);
+  };
+
+  const paths: FlowPath[] = [];
   for (let i = 0; i < doors.length - 1; i++) {
-    const p = bfs(doorCell(doors[i]), doorCell(doors[i + 1]));
-    if (p && p.length > 1) paths.push(p);
+    const points = bfs(doorCell(doors[i]), doorCell(doors[i + 1]));
+    if (points && points.length > 1) {
+      const widths = points.map((_, j) => widthAt(points, j));
+      const narrow = widths.map((w) => w < FLOW_MIN_WIDTH_CM);
+      paths.push({ points, narrow, minWidthCm: Math.min(...widths) });
+    }
   }
   return paths;
 }
