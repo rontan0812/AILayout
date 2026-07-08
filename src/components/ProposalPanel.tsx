@@ -98,8 +98,8 @@ export default function ProposalPanel({ placedItems, budget }: ProposalPanelProp
         chosen[idx] >= 0 ? blockCands[idx][chosen[idx]].price : 0;
       let total = placedItems.reduce((s, _, idx) => s + priceOf(idx), 0);
 
-      // 予算があり、収まっているなら、予算を使い切る方向に貪欲にアップグレード
-      if (budget > 0 && total <= budget) {
+      // 「安め優先」でなく、予算があり収まっているなら、予算を使い切る方向にアップグレード
+      if (!cheaperFirst && budget > 0 && total <= budget) {
         let improved = true;
         while (improved) {
           improved = false;
