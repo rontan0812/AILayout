@@ -274,7 +274,12 @@ export default function Home() {
           )}
           <div className="flex w-full flex-col gap-2">
             <span className="text-sm font-medium text-stone-700">3Dプレビュー</span>
-            <Room3D widthCm={roomSize.widthCm} depthCm={roomSize.depthCm} />
+            <Room3D
+              widthCm={roomSize.widthCm}
+              depthCm={roomSize.depthCm}
+              placedItems={placedItems}
+              openings={openings}
+            />
           </div>
           {flowPaths.length > 0 && (
             <label className="flex w-full items-center gap-2 rounded-md border border-stone-200 bg-white px-3 py-2 text-sm text-stone-600">
