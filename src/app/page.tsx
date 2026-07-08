@@ -103,7 +103,7 @@ export default function Home() {
     }
   }, [roomSize, placedItems, openings, budget, loaded]);
 
-  const handlePlacePreset = (preset: FurniturePreset) => {
+  const handlePlacePreset = (preset: FurniturePreset, owned: boolean) => {
     setPlacedItems((prev) => {
       const { x, y } = findFreePosition(
         prev,
@@ -125,6 +125,7 @@ export default function Home() {
           depthCm: preset.depthCm,
           xCm: x,
           yCm: y,
+          owned,
         },
       ];
     });
@@ -270,6 +271,11 @@ export default function Home() {
                       <span className="min-w-0 flex-1 truncate text-sm font-medium text-stone-800">
                         {item.type}
                         {item.num}
+                        {item.owned && (
+                          <span className="ml-1 rounded bg-stone-200 px-1 py-0.5 text-xs font-medium text-stone-600">
+                            所有
+                          </span>
+                        )}
                       </span>
                       <span className="flex shrink-0 items-center gap-1 text-xs text-stone-500">
                         <input
