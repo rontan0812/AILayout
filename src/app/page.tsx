@@ -79,6 +79,7 @@ export default function Home() {
   const [openings, setOpenings] = useState<Opening[]>([]);
   const [budget, setBudget] = useState<number>(0);
   const [showFlow, setShowFlow] = useState(true);
+  const [viewMode, setViewMode] = useState<"2d" | "3d">("2d");
   // localStorage 読み込み完了フラグ（読み込み前の初期値で保存して上書きしないため）
   const [loaded, setLoaded] = useState(false);
 
@@ -258,43 +259,77 @@ export default function Home() {
               />
             </div>
           </div>
-          <RoomCanvas
-            widthCm={roomSize.widthCm}
-            depthCm={roomSize.depthCm}
-            placedItems={placedItems}
-            openings={openings}
-            flowPaths={showFlow ? flowPaths : []}
-            onMove={handleMove}
-            onRemove={handleRemove}
-          />
-          {showFlow && flowPaths.some((p) => p.narrow.some((n) => n)) && (
-            <div className="w-full rounded-md border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800">
-              ⚠️ 動線が狭い箇所があります（幅 {FLOW_MIN_WIDTH_CM}cm 未満・赤い区間）。家具の配置を見直すと通りやすくなります。
+          <div className="flex w-full items-center gap-3">
+            <div className="inline-flex overflow-hidden rounded-md border border-stone-300">
+              <button
+                type="button"
+                onClick={() => setViewMode("2d")}
+                className={`px-4 py-1.5 text-sm ${
+                  viewMode === "2d"
+                    ? "bg-blue-600 text-white"
+                    : "bg-white text-stone-600 hover:bg-stone-100"
+                }`}
+              >
+                2D
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode("3d")}
+                className={`px-4 py-1.5 text-sm ${
+                  viewMode === "3d"
+                    ? "bg-blue-600 text-white"
+                    : "bg-white text-stone-600 hover:bg-stone-100"
+                }`}
+              >
+                3D
+              </button>
             </div>
-          )}
-          <div className="flex w-full flex-col gap-2">
-            <span className="text-sm font-medium text-stone-700">3Dプレビュー</span>
+            <span className="text-xs text-stone-500">
+              {viewMode === "2d"
+                ? "真上から編集"
+                : "立体プレビュー（ドラッグで回転・ホイールでズーム）"}
+            </span>
+          </div>
+
+          {viewMode === "2d" ? (
+            <>
+              <RoomCanvas
+                widthCm={roomSize.widthCm}
+                depthCm={roomSize.depthCm}
+                placedItems={placedItems}
+                openings={openings}
+                flowPaths={showFlow ? flowPaths : []}
+                onMove={handleMove}
+                onRemove={handleRemove}
+              />
+              {showFlow && flowPaths.some((p) => p.narrow.some((n) => n)) && (
+                <div className="w-full rounded-md border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800">
+                  ⚠️ 動線が狭い箇所があります（幅 {FLOW_MIN_WIDTH_CM}cm 未満・赤い区間）。家具の配置を見直すと通りやすくなります。
+                </div>
+              )}
+              {flowPaths.length > 0 && (
+                <label className="flex w-full items-center gap-2 rounded-md border border-stone-200 bg-white px-3 py-2 text-sm text-stone-600">
+                  <input
+                    type="checkbox"
+                    checked={showFlow}
+                    onChange={(e) => setShowFlow(e.target.checked)}
+                    className="h-4 w-4"
+                  />
+                  <span
+                    className="inline-block h-1 w-6 shrink-0 rounded"
+                    style={{ background: "#059669" }}
+                  />
+                  生活動線（入口間の通路）を表示
+                </label>
+              )}
+            </>
+          ) : (
             <Room3D
               widthCm={roomSize.widthCm}
               depthCm={roomSize.depthCm}
               placedItems={placedItems}
               openings={openings}
             />
-          </div>
-          {flowPaths.length > 0 && (
-            <label className="flex w-full items-center gap-2 rounded-md border border-stone-200 bg-white px-3 py-2 text-sm text-stone-600">
-              <input
-                type="checkbox"
-                checked={showFlow}
-                onChange={(e) => setShowFlow(e.target.checked)}
-                className="h-4 w-4"
-              />
-              <span
-                className="inline-block h-1 w-6 shrink-0 rounded"
-                style={{ background: "#059669" }}
-              />
-              生活動線（入口間の通路）を表示
-            </label>
           )}
           {blockedWindowCount > 0 && (
             <div className="w-full rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
