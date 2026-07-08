@@ -8,6 +8,7 @@ import OpeningPanel from "@/components/OpeningPanel";
 import ProposalPanel from "@/components/ProposalPanel";
 import DataPanel from "@/components/DataPanel";
 import { STORAGE_KEY } from "@/components/storageKeys";
+import { computeFlowPaths } from "@/components/flowline";
 import type { FurniturePreset } from "@/components/furnitureCatalog";
 import type { PlacedItem, Opening } from "@/components/RoomCanvas";
 import { FURNITURE_PALETTE } from "@/components/furniturePalette";
@@ -207,6 +208,14 @@ export default function Home() {
       );
     }).length;
 
+  // 生活動線（入口どうしを家具を避けて結ぶ経路）
+  const flowPaths = computeFlowPaths(
+    roomSize.widthCm,
+    roomSize.depthCm,
+    placedItems,
+    openings
+  );
+
   const sizeInputClass =
     "w-14 rounded border border-stone-300 px-1 py-0.5 text-right text-xs text-stone-800 focus:border-blue-500 focus:outline-none";
 
@@ -243,6 +252,7 @@ export default function Home() {
             depthCm={roomSize.depthCm}
             placedItems={placedItems}
             openings={openings}
+            flowPaths={flowPaths}
             onMove={handleMove}
             onRemove={handleRemove}
           />
