@@ -20,6 +20,7 @@ export type PlacedItem = {
   depthCm: number;
   xCm: number;
   yCm: number;
+  owned?: boolean; // 手持ち（所有品）なら true。提案・予算の対象外にする
 };
 
 // 壁の辺に置く開口部（入口/窓）
@@ -255,14 +256,15 @@ export default function RoomCanvas({
                       <Rect
                         width={w}
                         height={h}
-                        fill={color.fill}
+                        fill={item.owned ? "#e5e7eb" : color.fill}
                         opacity={0.9}
-                        stroke={color.stroke}
+                        stroke={item.owned ? "#6b7280" : color.stroke}
                         strokeWidth={2}
+                        dash={item.owned ? [6, 4] : undefined}
                         cornerRadius={2}
                       />
                       <Text
-                        text={`${item.type}${item.num}`}
+                        text={item.owned ? `${item.type}${item.num}（所有）` : `${item.type}${item.num}`}
                         width={w}
                         height={h}
                         padding={2}
@@ -270,7 +272,7 @@ export default function RoomCanvas({
                         verticalAlign="middle"
                         fontSize={10}
                         fontStyle="bold"
-                        fill={color.text}
+                        fill={item.owned ? "#374151" : color.text}
                         ellipsis
                         wrap="none"
                         listening={false}
