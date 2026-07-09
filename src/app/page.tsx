@@ -9,6 +9,9 @@ import ProposalPanel from "@/components/ProposalPanel";
 import DataPanel from "@/components/DataPanel";
 import RoomShapePanel from "@/components/RoomShapePanel";
 import FloorPlanScanPanel from "@/components/FloorPlanScanPanel";
+import AutoLayoutPanel from "@/components/AutoLayoutPanel";
+import BudgetLayoutPanel from "@/components/BudgetLayoutPanel";
+import { autoLayout, type LayoutRequest } from "@/components/autoLayout";
 import {
   DEFAULT_ROOM_SHAPE,
   roomPolygon as computeRoomPolygon,
@@ -89,6 +92,11 @@ export default function Home() {
   const [budget, setBudget] = useState<number>(0);
   const [showFlow, setShowFlow] = useState(true);
   const [viewMode, setViewMode] = useState<"2d" | "3d">("2d");
+  // 自動レイアウトの結果メッセージ（置ききれなかった等）
+  const [layoutNote, setLayoutNote] = useState("");
+  // 直近の自動レイアウト要求（別案生成に使う）と別案シード
+  const [lastRequests, setLastRequests] = useState<LayoutRequest[] | null>(null);
+  const [rerollSeed, setRerollSeed] = useState(0);
   // localStorage 読み込み完了フラグ（読み込み前の初期値で保存して上書きしないため）
   const [loaded, setLoaded] = useState(false);
 
@@ -128,6 +136,49 @@ export default function Home() {
 
   // 部屋外の欠け領域（家具を置けない矩形。L字の凹みや取り込んだ多角形の外側）
   const blockedRects = roomBlockedRects(roomShape, roomSize.widthCm, roomSize.depthCm);
+
+  // 家具リストから自動レイアウトを生成し、非所有の家具枠を置き換える。
+  const applyAutoLayout = (requests: LayoutRequest[], seed: number) => {
+    const owned = placedItems.filter((i) => i.owned);
+    const polygon = computeRoomPolygon(roomShape, roomSize.widthCm, roomSize.depthCm);
+    const res = autoLayout({
+      roomW: roomSize.widthCm,
+      roomD: roomSize.depthCm,
+      polygon,
+      blockedRects,
+      openings,
+      ownedItems: owned,
+      requests,
+      seed,
+    });
+    setPlacedItems([...owned, ...res.items]);
+    if (res.unplaced.length > 0) {
+      const summary = res.unplaced.map((u) => `${u.type}×${u.count}`).join("、");
+      setLayoutNote(`置ききれなかった家具があります: ${summary}。部屋を広げるか数を減らしてください。`);
+    } else {
+      setLayoutNote("");
+    }
+  };
+
+  const runAutoLayout = (requests: LayoutRequest[]) => {
+    setLastRequests(requests);
+    setRerollSeed(0);
+    applyAutoLayout(requests, 0);
+  };
+
+  // 同じ家具リストで別の配置案を生成する
+  const handleReroll = () => {
+    if (!lastRequests) return;
+    const seed = rerollSeed + 1;
+    setRerollSeed(seed);
+    applyAutoLayout(lastRequests, seed);
+  };
+
+  // 自動配置した家具枠（非所有）を消す
+  const handleClearLayout = () => {
+    setPlacedItems((prev) => prev.filter((i) => i.owned));
+    setLayoutNote("");
+  };
 
   const handlePlacePreset = (preset: FurniturePreset, owned: boolean) => {
     setPlacedItems((prev) => {
@@ -335,6 +386,31 @@ export default function Home() {
                 onRemove={handleRemove}
                 onMoveOpening={handleMoveOpening}
               />
+              {(lastRequests || placedItems.some((i) => !i.owned)) && (
+                <div className="flex w-full flex-wrap items-center gap-2">
+                  {lastRequests && (
+                    <button
+                      type="button"
+                      onClick={handleReroll}
+                      className="rounded-md border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-sm text-emerald-700 hover:bg-emerald-100"
+                    >
+                      🔀 別の配置案
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={handleClearLayout}
+                    className="rounded-md border border-stone-300 bg-white px-3 py-1.5 text-sm text-stone-600 hover:bg-stone-100"
+                  >
+                    配置をクリア
+                  </button>
+                </div>
+              )}
+              {layoutNote && (
+                <div className="w-full rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                  {layoutNote}
+                </div>
+              )}
               {showFlow && flowPaths.some((p) => p.narrow.some((n) => n)) && (
                 <div className="w-full rounded-md border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800">
                   ⚠️ 動線が狭い箇所があります（幅 {FLOW_MIN_WIDTH_CM}cm 未満・赤い区間）。家具の配置を見直すと通りやすくなります。
@@ -450,6 +526,8 @@ export default function Home() {
         <div className="flex w-full max-w-md flex-col gap-6 lg:w-72">
           <RoomShapePanel shape={roomShape} roomSize={roomSize} onChange={setRoomShape} />
           <FloorPlanScanPanel roomSize={roomSize} onDetect={setRoomShape} />
+          <AutoLayoutPanel onRun={runAutoLayout} />
+          <BudgetLayoutPanel budget={budget} roomSize={roomSize} onRun={runAutoLayout} />
           <FurniturePresetPanel onPlace={handlePlacePreset} />
           <OpeningPanel
             openings={openings}
