@@ -584,6 +584,20 @@ export default function Home() {
                 onMoveLight={handleMoveLight}
                 onRemoveLight={handleRemoveLight}
               />
+              {placedItems.length === 0 ? (
+                <div className="w-full rounded-lg border border-dashed border-blue-300 bg-blue-50/60 px-4 py-4 text-sm text-stone-700">
+                  <p className="mb-1 font-semibold text-blue-800">🛋 まずは家具を置いてみましょう</p>
+                  <ul className="ml-1 flex flex-col gap-0.5 text-stone-600">
+                    <li>・右の「家具を置く」で、選んだ家具や予算から自動配置できます</li>
+                    <li>・パレットから1つずつ置くこともできます</li>
+                    <li>・置いた家具はタップで選択→回転・複製・削除、ドラッグで移動</li>
+                  </ul>
+                </div>
+              ) : (
+                <p className="w-full text-xs text-stone-500">
+                  💡 家具はタップで選択（🔄回転・⧉複製・🗑削除）、ドラッグで移動（グリッド/隣接に吸着）。Ctrl+Z で取り消し。
+                </p>
+              )}
               {(lastRequests || placedItems.some((i) => !i.owned)) && (
                 <div className="flex w-full flex-wrap items-center gap-2">
                   {lastRequests && (
@@ -739,7 +753,7 @@ export default function Home() {
                 })}
               </ul>
               <p className="text-xs text-stone-500">
-                家具はドラッグで移動、ダブルタップまたは × で削除できます
+                キャンバス上の家具をタップすると回転・複製・削除ができます（一覧の ⟳ / × でも操作可）
               </p>
             </div>
           )}
