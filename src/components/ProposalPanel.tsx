@@ -383,6 +383,18 @@ export default function ProposalPanel({ placedItems, budget }: ProposalPanelProp
                               : "サイズ不明"}
                           </span>
                         </span>
+                        <span className="text-xs">
+                          {a.product.reviewCount > 0 ? (
+                            <span className="text-amber-600">
+                              ★ {a.product.reviewAverage.toFixed(2)}
+                              <span className="ml-1 text-stone-400">
+                                （{a.product.reviewCount.toLocaleString()}件）
+                              </span>
+                            </span>
+                          ) : (
+                            <span className="text-stone-400">レビューなし</span>
+                          )}
+                        </span>
                       </>
                     ) : (
                       <span className="text-sm text-stone-400">

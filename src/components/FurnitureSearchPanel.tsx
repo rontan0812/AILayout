@@ -10,6 +10,8 @@ export type FurnitureItem = {
   imageUrl: string | null;
   widthCm: number | null;
   depthCm: number | null;
+  reviewCount: number; // レビュー件数
+  reviewAverage: number; // 評価平均（0〜5）
 };
 
 function formatSize(item: FurnitureItem): string {
