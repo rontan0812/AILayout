@@ -29,6 +29,8 @@ export default function ProposalPanel({ placedItems, budget }: ProposalPanelProp
   // 要望
   const [cheaperFirst, setCheaperFirst] = useState(false);
   const [requestText, setRequestText] = useState("");
+  // 選定基準（安さ／評価／レビュー数）
+  const [sortKey, setSortKey] = useState<"price" | "rating" | "reviews">("price");
   // localStorage 読み込み完了フラグ
   const [loaded, setLoaded] = useState(false);
 
@@ -42,6 +44,8 @@ export default function ProposalPanel({ placedItems, budget }: ProposalPanelProp
         if (Array.isArray(saved.assignments)) setAssignments(saved.assignments);
         if (typeof saved.cheaperFirst === "boolean") setCheaperFirst(saved.cheaperFirst);
         if (typeof saved.requestText === "string") setRequestText(saved.requestText);
+        if (saved.sortKey === "price" || saved.sortKey === "rating" || saved.sortKey === "reviews")
+          setSortKey(saved.sortKey);
       }
     } catch {
       // 壊れたデータは無視
@@ -56,12 +60,12 @@ export default function ProposalPanel({ placedItems, budget }: ProposalPanelProp
     try {
       localStorage.setItem(
         PROPOSAL_KEY,
-        JSON.stringify({ assignments, cheaperFirst, requestText })
+        JSON.stringify({ assignments, cheaperFirst, requestText, sortKey })
       );
     } catch {
       // 保存失敗は無視
     }
-  }, [assignments, cheaperFirst, requestText, loaded]);
+  }, [assignments, cheaperFirst, requestText, sortKey, loaded]);
 
   const generate = async () => {
     if (placedItems.length === 0) return;
@@ -179,24 +183,41 @@ export default function ProposalPanel({ placedItems, budget }: ProposalPanelProp
           : fallbackProducts[idx]?.price ?? 0;
       let total = targetItems.reduce((s, _, idx) => s + priceOf(idx), 0);
 
-      // 「安め優先」でなく、予算があり収まっているなら、予算を使い切る方向にアップグレード
+      // 「安め優先」でなく、予算があり収まっているなら、選定基準に沿って予算内で持ち上げる。
+      // 基準: price=予算を使い切る（高い方へ） / rating=評価が高い方へ / reviews=レビューが多い方へ。
+      const metricOf = (p: FurnitureItem) =>
+        sortKey === "rating"
+          ? p.reviewAverage
+          : sortKey === "reviews"
+            ? p.reviewCount
+            : p.price;
       if (!cheaperFirst && budget > 0 && total <= budget) {
         let improved = true;
         while (improved) {
           improved = false;
-          let best: { idx: number; newIdx: number; delta: number } | null = null;
+          // 予算内で最も基準値を伸ばせる入れ替えを1つ選ぶ（同点は追加コストが小さい方）
+          let best:
+            | { idx: number; newIdx: number; gain: number; delta: number }
+            | null = null;
           for (let idx = 0; idx < targetItems.length; idx++) {
             if (chosen[idx] < 0) continue;
-            const cur = priceOf(idx);
+            const cur = blockCands[idx][chosen[idx]];
+            const curM = metricOf(cur);
             const cands = blockCands[idx];
-            // より高い候補のうち、予算内に収まる最も高いものを探す
-            for (let j = cands.length - 1; j > chosen[idx]; j--) {
-              const p = cands[j].price;
-              if (p <= cur) continue;
-              if (total - cur + p <= budget) {
-                const delta = p - cur;
-                if (!best || delta > best.delta) best = { idx, newIdx: j, delta };
-                break;
+            for (let j = 0; j < cands.length; j++) {
+              if (j === chosen[idx]) continue;
+              const p = cands[j];
+              const gain = metricOf(p) - curM;
+              if (gain <= 0) continue;
+              const delta = p.price - cur.price;
+              if (total + delta <= budget) {
+                if (
+                  !best ||
+                  gain > best.gain ||
+                  (gain === best.gain && delta < best.delta)
+                ) {
+                  best = { idx, newIdx: j, gain, delta };
+                }
               }
             }
           }
@@ -295,6 +316,18 @@ export default function ProposalPanel({ placedItems, budget }: ProposalPanelProp
 
       <div className="flex flex-col gap-2 rounded-lg border border-stone-200 bg-white p-3">
         <span className="text-sm font-medium text-stone-700">要望（任意）</span>
+        <label className="flex flex-col gap-1 text-sm text-stone-600">
+          選ぶ基準
+          <select
+            value={sortKey}
+            onChange={(e) => setSortKey(e.target.value as "price" | "rating" | "reviews")}
+            className="rounded-md border border-stone-300 px-3 py-2 text-stone-800 focus:border-blue-500 focus:outline-none"
+          >
+            <option value="price">安さ・予算を活かす</option>
+            <option value="rating">評価が高い順</option>
+            <option value="reviews">レビューが多い順</option>
+          </select>
+        </label>
         <label className="flex items-center gap-2 text-sm text-stone-600">
           <input
             type="checkbox"
