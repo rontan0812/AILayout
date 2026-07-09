@@ -11,7 +11,9 @@ import RoomShapePanel from "@/components/RoomShapePanel";
 import FloorPlanScanPanel from "@/components/FloorPlanScanPanel";
 import AutoLayoutPanel from "@/components/AutoLayoutPanel";
 import BudgetLayoutPanel from "@/components/BudgetLayoutPanel";
+import ScorePanel from "@/components/ScorePanel";
 import { autoLayout, type LayoutRequest } from "@/components/autoLayout";
+import { scoreLayout } from "@/components/layoutScore";
 import {
   DEFAULT_ROOM_SHAPE,
   roomPolygon as computeRoomPolygon,
@@ -309,6 +311,17 @@ export default function Home() {
   // 部屋の形（矩形/L字）のポリゴン頂点
   const roomPolygon = computeRoomPolygon(roomShape, roomSize.widthCm, roomSize.depthCm);
 
+  // 現在の配置の採点（重なり・動線・窓塞ぎ等の減点）
+  const layoutScoreResult = scoreLayout({
+    roomW: roomSize.widthCm,
+    roomD: roomSize.depthCm,
+    polygon: roomPolygon,
+    blockedRects,
+    openings,
+    items: placedItems,
+    flowPaths,
+  });
+
   const sizeInputClass =
     "w-14 rounded border border-stone-300 px-1 py-0.5 text-right text-xs text-stone-800 focus:border-blue-500 focus:outline-none";
 
@@ -446,6 +459,7 @@ export default function Home() {
               ⚠️ 窓の前に家具があります（{blockedWindowCount}箇所）。窓を塞いでいないか確認してください。
             </div>
           )}
+          {placedItems.length > 0 && <ScorePanel result={layoutScoreResult} />}
           {placedItems.length > 0 && (
             <div className="flex w-full flex-col gap-2">
               <ul className="flex flex-col gap-1.5">
