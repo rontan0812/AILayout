@@ -11,7 +11,9 @@ import RoomShapePanel from "@/components/RoomShapePanel";
 import FloorPlanScanPanel from "@/components/FloorPlanScanPanel";
 import AutoLayoutPanel from "@/components/AutoLayoutPanel";
 import BudgetLayoutPanel from "@/components/BudgetLayoutPanel";
+import ScorePanel from "@/components/ScorePanel";
 import { autoLayout, type LayoutRequest } from "@/components/autoLayout";
+import { scoreLayout } from "@/components/layoutScore";
 import {
   DEFAULT_ROOM_SHAPE,
   roomPolygon as computeRoomPolygon,
@@ -97,6 +99,9 @@ export default function Home() {
   // 直近の自動レイアウト要求（別案生成に使う）と別案シード
   const [lastRequests, setLastRequests] = useState<LayoutRequest[] | null>(null);
   const [rerollSeed, setRerollSeed] = useState(0);
+  // 採点の減点理由にホバー中、キャンバスで強調する家具と該当減点ID
+  const [highlightUids, setHighlightUids] = useState<string[]>([]);
+  const [activeDeduction, setActiveDeduction] = useState<string | null>(null);
   // localStorage 読み込み完了フラグ（読み込み前の初期値で保存して上書きしないため）
   const [loaded, setLoaded] = useState(false);
 
@@ -309,6 +314,17 @@ export default function Home() {
   // 部屋の形（矩形/L字）のポリゴン頂点
   const roomPolygon = computeRoomPolygon(roomShape, roomSize.widthCm, roomSize.depthCm);
 
+  // 現在の配置の採点（重なり・動線・窓塞ぎ等の減点）
+  const layoutScoreResult = scoreLayout({
+    roomW: roomSize.widthCm,
+    roomD: roomSize.depthCm,
+    polygon: roomPolygon,
+    blockedRects,
+    openings,
+    items: placedItems,
+    flowPaths,
+  });
+
   const sizeInputClass =
     "w-14 rounded border border-stone-300 px-1 py-0.5 text-right text-xs text-stone-800 focus:border-blue-500 focus:outline-none";
 
@@ -382,6 +398,7 @@ export default function Home() {
                 flowPaths={showFlow ? flowPaths : []}
                 roomPolygon={roomPolygon}
                 blockedRects={blockedRects}
+                highlightUids={highlightUids}
                 onMove={handleMove}
                 onRemove={handleRemove}
                 onMoveOpening={handleMoveOpening}
@@ -445,6 +462,16 @@ export default function Home() {
             <div className="w-full rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
               ⚠️ 窓の前に家具があります（{blockedWindowCount}箇所）。窓を塞いでいないか確認してください。
             </div>
+          )}
+          {placedItems.length > 0 && (
+            <ScorePanel
+              result={layoutScoreResult}
+              activeId={activeDeduction}
+              onHover={(uids, id) => {
+                setHighlightUids(uids);
+                setActiveDeduction(id);
+              }}
+            />
           )}
           {placedItems.length > 0 && (
             <div className="flex w-full flex-col gap-2">

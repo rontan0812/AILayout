@@ -42,6 +42,8 @@ type RoomCanvasProps = {
   roomPolygon: { xCm: number; yCm: number }[];
   // 部屋外の欠け領域など、家具を置けない矩形（L字の凹み等）
   blockedRects: { xCm: number; yCm: number; widthCm: number; depthCm: number }[];
+  // 採点で減点対象になった家具（強調表示する）
+  highlightUids?: string[];
   onMove: (uid: string, xCm: number, yCm: number) => void;
   onRemove: (uid: string) => void;
   onMoveOpening: (id: string, offsetCm: number) => void;
@@ -55,6 +57,7 @@ export default function RoomCanvas({
   flowPaths,
   roomPolygon,
   blockedRects,
+  highlightUids,
   onMove,
   onRemove,
   onMoveOpening,
@@ -63,6 +66,7 @@ export default function RoomCanvas({
   const [stageWidth, setStageWidth] = useState(MAX_WIDTH);
   // ドラッグ中の家具の「前フレーム位置」（cm）。貫通防止の基準に使う。
   const dragRef = useRef<{ x: number; y: number } | null>(null);
+  const highlightSet = new Set(highlightUids ?? []);
 
   // 親要素の幅に追従させる（携帯では画面幅、PCでは最大700px）
   useEffect(() => {
@@ -316,6 +320,22 @@ export default function RoomCanvas({
                         dash={item.owned ? [6, 4] : undefined}
                         cornerRadius={2}
                       />
+                      {highlightSet.has(item.uid) && (
+                        <Rect
+                          x={-3}
+                          y={-3}
+                          width={w + 6}
+                          height={h + 6}
+                          stroke="#dc2626"
+                          strokeWidth={3}
+                          cornerRadius={4}
+                          dash={[8, 4]}
+                          listening={false}
+                          shadowColor="#dc2626"
+                          shadowBlur={8}
+                          shadowOpacity={0.6}
+                        />
+                      )}
                       <Text
                         text={item.owned ? `${item.type}${item.num}（所有）` : `${item.type}${item.num}`}
                         width={w}
