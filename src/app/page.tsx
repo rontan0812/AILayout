@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import RoomSizeForm, { type RoomSize } from "@/components/RoomSizeForm";
 import FurniturePresetPanel from "@/components/FurniturePresetPanel";
@@ -12,6 +12,7 @@ import FloorPlanScanPanel from "@/components/FloorPlanScanPanel";
 import AutoLayoutPanel from "@/components/AutoLayoutPanel";
 import BudgetLayoutPanel from "@/components/BudgetLayoutPanel";
 import ScorePanel from "@/components/ScorePanel";
+import CollapsibleSection from "@/components/CollapsibleSection";
 import LightingPanel from "@/components/LightingPanel";
 import LightFixturePanel from "@/components/LightFixturePanel";
 import {
@@ -73,6 +74,11 @@ function findFreePosition(
   }
   return { x: 0, y: 0 };
 }
+
+// Undo/Redo で扱う配置系のスナップショット
+type HistSnapshot = { placedItems: PlacedItem[]; openings: Opening[]; lights: Light[] };
+const snapEqual = (a: HistSnapshot, b: HistSnapshot) =>
+  JSON.stringify(a) === JSON.stringify(b);
 
 // Konva はブラウザの canvas API に依存するため SSR を無効化する
 const RoomCanvas = dynamic(() => import("@/components/RoomCanvas"), {
@@ -164,6 +170,83 @@ export default function Home() {
     }
   }, [roomSize, roomShape, placedItems, openings, budget, northDeg, timeOfDay, lights, loaded]);
 
+  // --- Undo/Redo（配置系: 家具・開口部・照明の履歴） ---
+  const historyRef = useRef<{ past: HistSnapshot[]; present: HistSnapshot | null; future: HistSnapshot[] }>({
+    past: [],
+    present: null,
+    future: [],
+  });
+  const isRestoringRef = useRef(false);
+  const [{ canUndo, canRedo }, setHistState] = useState({ canUndo: false, canRedo: false });
+  const syncHist = () => {
+    const h = historyRef.current;
+    setHistState({ canUndo: h.past.length > 0, canRedo: h.future.length > 0 });
+  };
+
+  useEffect(() => {
+    if (!loaded) return;
+    const snap: HistSnapshot = { placedItems, openings, lights };
+    const h = historyRef.current;
+    if (isRestoringRef.current) {
+      isRestoringRef.current = false;
+      h.present = snap;
+      return;
+    }
+    if (h.present === null) {
+      h.present = snap;
+      return;
+    }
+    if (snapEqual(h.present, snap)) return;
+    h.past.push(h.present);
+    if (h.past.length > 50) h.past.shift();
+    h.present = snap;
+    h.future = [];
+    syncHist();
+  }, [placedItems, openings, lights, loaded]);
+
+  const applySnapshot = (s: HistSnapshot) => {
+    isRestoringRef.current = true;
+    setPlacedItems(s.placedItems);
+    setOpenings(s.openings);
+    setLights(s.lights);
+  };
+  const undo = () => {
+    const h = historyRef.current;
+    if (h.past.length === 0 || h.present === null) return;
+    h.future.unshift(h.present);
+    const prev = h.past.pop() as HistSnapshot;
+    h.present = prev;
+    applySnapshot(prev);
+    syncHist();
+  };
+  const redo = () => {
+    const h = historyRef.current;
+    if (h.future.length === 0 || h.present === null) return;
+    h.past.push(h.present);
+    const next = h.future.shift() as HistSnapshot;
+    h.present = next;
+    applySnapshot(next);
+    syncHist();
+  };
+
+  // キーボードショートカット（Ctrl/Cmd+Z で取消、Shift付き or Ctrl+Y でやり直し）
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      const k = e.key.toLowerCase();
+      if (k === "z" && !e.shiftKey) {
+        e.preventDefault();
+        undo();
+      } else if ((k === "z" && e.shiftKey) || k === "y") {
+        e.preventDefault();
+        redo();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // 部屋外の欠け領域（家具を置けない矩形。L字の凹みや取り込んだ多角形の外側）
   const blockedRects = roomBlockedRects(roomShape, roomSize.widthCm, roomSize.depthCm);
 
@@ -246,6 +329,19 @@ export default function Home() {
 
   const handleRemove = (uid: string) => {
     setPlacedItems((prev) => prev.filter((i) => i.uid !== uid));
+  };
+
+  // 家具を複製して少しずらして置く
+  const handleDuplicate = (uid: string) => {
+    setPlacedItems((prev) => {
+      const src = prev.find((i) => i.uid === uid);
+      if (!src) return prev;
+      const num = prev.filter((i) => i.type === src.type).length + 1;
+      const offset = 20;
+      const x = Math.min(src.xCm + offset, Math.max(0, roomSize.widthCm - src.widthCm));
+      const y = Math.min(src.yCm + offset, Math.max(0, roomSize.depthCm - src.depthCm));
+      return [...prev, { ...src, uid: crypto.randomUUID(), num, xCm: x, yCm: y }];
+    });
   };
 
   const handleResize = (
@@ -441,6 +537,28 @@ export default function Home() {
                 ? "真上から編集"
                 : "立体プレビュー（ドラッグで回転・ホイールでズーム）"}
             </span>
+            <div className="ml-auto inline-flex overflow-hidden rounded-md border border-stone-300">
+              <button
+                type="button"
+                onClick={undo}
+                disabled={!canUndo}
+                aria-label="取り消し"
+                title="取り消し（Ctrl+Z）"
+                className="px-3 py-1.5 text-sm text-stone-600 hover:bg-stone-100 disabled:cursor-not-allowed disabled:text-stone-300"
+              >
+                ↩︎
+              </button>
+              <button
+                type="button"
+                onClick={redo}
+                disabled={!canRedo}
+                aria-label="やり直し"
+                title="やり直し（Ctrl+Shift+Z）"
+                className="border-l border-stone-300 px-3 py-1.5 text-sm text-stone-600 hover:bg-stone-100 disabled:cursor-not-allowed disabled:text-stone-300"
+              >
+                ↪︎
+              </button>
+            </div>
           </div>
 
           {viewMode === "2d" ? (
@@ -460,10 +578,26 @@ export default function Home() {
                 lights={lights}
                 onMove={handleMove}
                 onRemove={handleRemove}
+                onRotate={handleRotate}
+                onDuplicate={handleDuplicate}
                 onMoveOpening={handleMoveOpening}
                 onMoveLight={handleMoveLight}
                 onRemoveLight={handleRemoveLight}
               />
+              {placedItems.length === 0 ? (
+                <div className="w-full rounded-lg border border-dashed border-blue-300 bg-blue-50/60 px-4 py-4 text-sm text-stone-700">
+                  <p className="mb-1 font-semibold text-blue-800">🛋 まずは家具を置いてみましょう</p>
+                  <ul className="ml-1 flex flex-col gap-0.5 text-stone-600">
+                    <li>・右の「家具を置く」で、選んだ家具や予算から自動配置できます</li>
+                    <li>・パレットから1つずつ置くこともできます</li>
+                    <li>・置いた家具はタップで選択→回転・複製・削除、ドラッグで移動</li>
+                  </ul>
+                </div>
+              ) : (
+                <p className="w-full text-xs text-stone-500">
+                  💡 家具はタップで選択（🔄回転・⧉複製・🗑削除）、ドラッグで移動（グリッド/隣接に吸着）。Ctrl+Z で取り消し。
+                </p>
+              )}
               {(lastRequests || placedItems.some((i) => !i.owned)) && (
                 <div className="flex w-full flex-wrap items-center gap-2">
                   {lastRequests && (
@@ -619,35 +753,46 @@ export default function Home() {
                 })}
               </ul>
               <p className="text-xs text-stone-500">
-                家具はドラッグで移動、ダブルタップまたは × で削除できます
+                キャンバス上の家具をタップすると回転・複製・削除ができます（一覧の ⟳ / × でも操作可）
               </p>
             </div>
           )}
         </div>
-        <div className="flex w-full max-w-md flex-col gap-6 lg:w-72">
-          <RoomShapePanel shape={roomShape} roomSize={roomSize} onChange={setRoomShape} />
-          <LightingPanel
-            northDeg={northDeg}
-            timeOfDay={timeOfDay}
-            onChangeNorth={setNorthDeg}
-            onChangeTime={setTimeOfDay}
-          />
-          <FloorPlanScanPanel roomSize={roomSize} onDetect={setRoomShape} />
-          <AutoLayoutPanel onRun={runAutoLayout} />
-          <BudgetLayoutPanel budget={budget} roomSize={roomSize} onRun={runAutoLayout} />
-          <FurniturePresetPanel onPlace={handlePlacePreset} />
-          <OpeningPanel
-            openings={openings}
-            roomSize={roomSize}
-            onAdd={handleAddOpening}
-            onRemove={handleRemoveOpening}
-          />
-          <LightFixturePanel
-            lights={lights}
-            onAdd={handleAddLight}
-            onRemove={handleRemoveLight}
-          />
-          <DataPanel />
+        <div className="flex w-full max-w-md flex-col gap-3 lg:w-72">
+          <CollapsibleSection title="家具を置く" icon="🛋" defaultOpen>
+            <AutoLayoutPanel onRun={runAutoLayout} />
+            <BudgetLayoutPanel budget={budget} roomSize={roomSize} onRun={runAutoLayout} />
+            <FurniturePresetPanel onPlace={handlePlacePreset} />
+          </CollapsibleSection>
+
+          <CollapsibleSection title="部屋の形・入口" icon="🏠">
+            <RoomShapePanel shape={roomShape} roomSize={roomSize} onChange={setRoomShape} />
+            <OpeningPanel
+              openings={openings}
+              roomSize={roomSize}
+              onAdd={handleAddOpening}
+              onRemove={handleRemoveOpening}
+            />
+            <FloorPlanScanPanel roomSize={roomSize} onDetect={setRoomShape} />
+          </CollapsibleSection>
+
+          <CollapsibleSection title="方角・採光・照明" icon="💡">
+            <LightingPanel
+              northDeg={northDeg}
+              timeOfDay={timeOfDay}
+              onChangeNorth={setNorthDeg}
+              onChangeTime={setTimeOfDay}
+            />
+            <LightFixturePanel
+              lights={lights}
+              onAdd={handleAddLight}
+              onRemove={handleRemoveLight}
+            />
+          </CollapsibleSection>
+
+          <CollapsibleSection title="データの保存・読み込み" icon="💾">
+            <DataPanel />
+          </CollapsibleSection>
         </div>
       </div>
       <ProposalPanel placedItems={placedItems} budget={budget} />

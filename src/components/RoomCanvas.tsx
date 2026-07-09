@@ -54,6 +54,8 @@ type RoomCanvasProps = {
   lights?: Light[];
   onMove: (uid: string, xCm: number, yCm: number) => void;
   onRemove: (uid: string) => void;
+  onRotate?: (uid: string) => void;
+  onDuplicate?: (uid: string) => void;
   onMoveOpening: (id: string, offsetCm: number) => void;
   onMoveLight?: (id: string, xCm: number, yCm: number) => void;
   onRemoveLight?: (id: string) => void;
@@ -74,6 +76,8 @@ export default function RoomCanvas({
   lights,
   onMove,
   onRemove,
+  onRotate,
+  onDuplicate,
   onMoveOpening,
   onMoveLight,
   onRemoveLight,
@@ -83,6 +87,8 @@ export default function RoomCanvas({
   // ドラッグ中の家具の「前フレーム位置」（cm）。貫通防止の基準に使う。
   const dragRef = useRef<{ x: number; y: number } | null>(null);
   const highlightSet = new Set(highlightUids ?? []);
+  // タップで選択中の家具（操作ハンドルを表示する）
+  const [selectedUid, setSelectedUid] = useState<string | null>(null);
 
   // 親要素の幅に追従させる（携帯では画面幅、PCでは最大700px）
   useEffect(() => {
@@ -123,6 +129,13 @@ export default function RoomCanvas({
               width={stageWidth}
               height={stageHeight}
               className="rounded-lg border border-stone-300 bg-white shadow-sm"
+              onMouseDown={(e) => {
+                // 背景（家具以外）をクリックしたら選択解除
+                if (e.target === e.target.getStage()) setSelectedUid(null);
+              }}
+              onTouchStart={(e) => {
+                if (e.target === e.target.getStage()) setSelectedUid(null);
+              }}
             >
               <Layer>
                 <Line
@@ -135,6 +148,8 @@ export default function RoomCanvas({
                   stroke="#57534e"
                   strokeWidth={3}
                   lineJoin="round"
+                  onMouseDown={() => setSelectedUid(null)}
+                  onTouchStart={() => setSelectedUid(null)}
                 />
 
                 {/* 採光ヒートマップ（部屋内セルのみ、家具の下に敷く） */}
@@ -284,7 +299,10 @@ export default function RoomCanvas({
                       x={roomX + clampedXCm * scale}
                       y={roomY + clampedYCm * scale}
                       draggable
+                      onClick={() => setSelectedUid(item.uid)}
+                      onTap={() => setSelectedUid(item.uid)}
                       onDragStart={() => {
+                        setSelectedUid(item.uid);
                         dragRef.current = { x: clampedXCm, y: clampedYCm };
                       }}
                       dragBoundFunc={(pos) => {
@@ -305,14 +323,45 @@ export default function RoomCanvas({
                         const id = item.depthCm;
                         const prev = dragRef.current ?? { x: clampedXCm, y: clampedYCm };
                         // 提案位置（部屋内にクランプ）
-                        const targetX = Math.min(
+                        const rawX = Math.min(
                           Math.max((pos.x - roomX) / scale, 0),
                           widthCm - iw
                         );
-                        const targetY = Math.min(
+                        const rawY = Math.min(
                           Math.max((pos.y - roomY) / scale, 0),
                           depthCm - id
                         );
+
+                        // グリッド吸着＋壁/隣接家具へのスナップ（感覚的に揃えやすく）
+                        const SNAP_TOL = 8;
+                        const GRID = 5;
+                        const neighbors = placedItems.filter((o) => o.uid !== item.uid);
+                        const snap = (
+                          v: number,
+                          max: number,
+                          cands: number[]
+                        ) => {
+                          let bestC = v;
+                          let bestD = SNAP_TOL;
+                          for (const c of cands) {
+                            if (c < 0 || c > max) continue;
+                            const d = Math.abs(c - v);
+                            if (d < bestD) {
+                              bestD = d;
+                              bestC = c;
+                            }
+                          }
+                          if (bestD < SNAP_TOL) return bestC;
+                          return Math.min(Math.max(Math.round(v / GRID) * GRID, 0), max);
+                        };
+                        const candX = [0, widthCm - iw];
+                        const candY = [0, depthCm - id];
+                        for (const o of neighbors) {
+                          candX.push(o.xCm, o.xCm + o.widthCm - iw, o.xCm + o.widthCm, o.xCm - iw);
+                          candY.push(o.yCm, o.yCm + o.depthCm - id, o.yCm + o.depthCm, o.yCm - id);
+                        }
+                        const targetX = snap(rawX, widthCm - iw, candX);
+                        const targetY = snap(rawY, depthCm - id, candY);
 
                         // X軸: 進行方向にある家具の手前で止める（前フレーム位置基準なので貫通しない）
                         let nx = targetX;
@@ -397,6 +446,103 @@ export default function RoomCanvas({
                     </Group>
                   );
                 })}
+
+                {/* 選択中の家具の枠＋操作ハンドル（回転・複製・削除） */}
+                {(() => {
+                  const sel = placedItems.find((i) => i.uid === selectedUid);
+                  if (!sel) return null;
+                  const maxXCm = Math.max(0, widthCm - sel.widthCm);
+                  const maxYCm = Math.max(0, depthCm - sel.depthCm);
+                  const sx = roomX + Math.min(Math.max(0, sel.xCm), maxXCm) * scale;
+                  const sy = roomY + Math.min(Math.max(0, sel.yCm), maxYCm) * scale;
+                  const sw = sel.widthCm * scale;
+                  const sh = sel.depthCm * scale;
+                  // ハンドルは枠の上、余白が無ければ下に出す
+                  const above = sy - 22 > 8;
+                  const hy = above ? sy - 20 : sy + sh + 20;
+                  const midX = sx + sw / 2;
+                  const gap = 34;
+                  const handles: {
+                    icon: string;
+                    color: string;
+                    dx: number;
+                    onTap: () => void;
+                  }[] = [
+                    {
+                      icon: "⟳",
+                      color: "#2563eb",
+                      dx: -gap,
+                      onTap: () => onRotate?.(sel.uid),
+                    },
+                    {
+                      icon: "⧉",
+                      color: "#0d9488",
+                      dx: 0,
+                      onTap: () => onDuplicate?.(sel.uid),
+                    },
+                    {
+                      icon: "🗑",
+                      color: "#dc2626",
+                      dx: gap,
+                      onTap: () => {
+                        onRemove(sel.uid);
+                        setSelectedUid(null);
+                      },
+                    },
+                  ];
+                  return (
+                    <Group>
+                      <Rect
+                        x={sx - 3}
+                        y={sy - 3}
+                        width={sw + 6}
+                        height={sh + 6}
+                        stroke="#2563eb"
+                        strokeWidth={2}
+                        dash={[6, 3]}
+                        cornerRadius={4}
+                        listening={false}
+                      />
+                      {handles.map((h) => (
+                        <Group
+                          key={h.icon}
+                          x={midX + h.dx}
+                          y={hy}
+                          onClick={(e) => {
+                            e.cancelBubble = true;
+                            h.onTap();
+                          }}
+                          onTap={(e) => {
+                            e.cancelBubble = true;
+                            h.onTap();
+                          }}
+                          onMouseEnter={(e) => {
+                            const c = e.target.getStage()?.container();
+                            if (c) c.style.cursor = "pointer";
+                          }}
+                          onMouseLeave={(e) => {
+                            const c = e.target.getStage()?.container();
+                            if (c) c.style.cursor = "default";
+                          }}
+                        >
+                          <Circle radius={14} fill="#ffffff" stroke={h.color} strokeWidth={2} shadowColor="#000" shadowBlur={4} shadowOpacity={0.2} />
+                          <Text
+                            text={h.icon}
+                            width={28}
+                            height={28}
+                            offsetX={14}
+                            offsetY={14}
+                            align="center"
+                            verticalAlign="middle"
+                            fontSize={14}
+                            fill={h.color}
+                            listening={false}
+                          />
+                        </Group>
+                      ))}
+                    </Group>
+                  );
+                })()}
 
                 {flowPaths.map((path, i) => (
                   <Line
