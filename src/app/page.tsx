@@ -12,6 +12,14 @@ import FloorPlanScanPanel from "@/components/FloorPlanScanPanel";
 import AutoLayoutPanel from "@/components/AutoLayoutPanel";
 import BudgetLayoutPanel from "@/components/BudgetLayoutPanel";
 import ScorePanel from "@/components/ScorePanel";
+import LightingPanel from "@/components/LightingPanel";
+import LightFixturePanel from "@/components/LightFixturePanel";
+import {
+  DEFAULT_NORTH_DEG,
+  DEFAULT_TIME,
+  computeLightGrid,
+  type Light,
+} from "@/components/lighting";
 import { autoLayout, type LayoutRequest } from "@/components/autoLayout";
 import { scoreLayout } from "@/components/layoutScore";
 import {
@@ -94,6 +102,11 @@ export default function Home() {
   const [budget, setBudget] = useState<number>(0);
   const [showFlow, setShowFlow] = useState(true);
   const [viewMode, setViewMode] = useState<"2d" | "3d">("2d");
+  // 方角（上の壁が向く方位）と時間帯
+  const [northDeg, setNorthDeg] = useState(DEFAULT_NORTH_DEG);
+  const [timeOfDay, setTimeOfDay] = useState(DEFAULT_TIME);
+  const [showLight, setShowLight] = useState(false);
+  const [lights, setLights] = useState<Light[]>([]);
   // 自動レイアウトの結果メッセージ（置ききれなかった等）
   const [layoutNote, setLayoutNote] = useState("");
   // 直近の自動レイアウト要求（別案生成に使う）と別案シード
@@ -118,6 +131,9 @@ export default function Home() {
         if (Array.isArray(saved.placedItems)) setPlacedItems(saved.placedItems);
         if (Array.isArray(saved.openings)) setOpenings(saved.openings);
         if (typeof saved.budget === "number") setBudget(saved.budget);
+        if (typeof saved.northDeg === "number") setNorthDeg(saved.northDeg);
+        if (typeof saved.timeOfDay === "number") setTimeOfDay(saved.timeOfDay);
+        if (Array.isArray(saved.lights)) setLights(saved.lights);
       }
     } catch {
       // 壊れたデータは無視して初期状態で始める
@@ -132,12 +148,21 @@ export default function Home() {
     try {
       localStorage.setItem(
         STORAGE_KEY,
-        JSON.stringify({ roomSize, roomShape, placedItems, openings, budget })
+        JSON.stringify({
+          roomSize,
+          roomShape,
+          placedItems,
+          openings,
+          budget,
+          northDeg,
+          timeOfDay,
+          lights,
+        })
       );
     } catch {
       // 保存に失敗しても致命的ではないので無視
     }
-  }, [roomSize, roomShape, placedItems, openings, budget, loaded]);
+  }, [roomSize, roomShape, placedItems, openings, budget, northDeg, timeOfDay, lights, loaded]);
 
   // 部屋外の欠け領域（家具を置けない矩形。L字の凹みや取り込んだ多角形の外側）
   const blockedRects = roomBlockedRects(roomShape, roomSize.widthCm, roomSize.depthCm);
@@ -260,6 +285,22 @@ export default function Home() {
     setOpenings((prev) => prev.filter((o) => o.id !== id));
   };
 
+  const handleAddLight = (kind: Light["kind"]) => {
+    // 中央付近に少しずらして追加（重ならないように）
+    const n = lights.length;
+    const x = Math.min(roomSize.widthCm - 10, roomSize.widthCm / 2 + (n % 3) * 30);
+    const y = Math.min(roomSize.depthCm - 10, roomSize.depthCm / 2 + (n % 2) * 30);
+    setLights((prev) => [...prev, { id: crypto.randomUUID(), kind, xCm: x, yCm: y }]);
+  };
+
+  const handleMoveLight = (id: string, xCm: number, yCm: number) => {
+    setLights((prev) => prev.map((l) => (l.id === id ? { ...l, xCm, yCm } : l)));
+  };
+
+  const handleRemoveLight = (id: string) => {
+    setLights((prev) => prev.filter((l) => l.id !== id));
+  };
+
   const handleMoveOpening = (id: string, offsetCm: number) => {
     setOpenings((prev) =>
       prev.map((o) => {
@@ -314,6 +355,19 @@ export default function Home() {
   // 部屋の形（矩形/L字）のポリゴン頂点
   const roomPolygon = computeRoomPolygon(roomShape, roomSize.widthCm, roomSize.depthCm);
 
+  // 採光マップ（可視化・採点に使用）
+  const lightGrid = computeLightGrid({
+    roomW: roomSize.widthCm,
+    roomD: roomSize.depthCm,
+    polygon: roomPolygon,
+    blockedRects,
+    openings,
+    items: placedItems,
+    northDeg,
+    timeOfDay,
+    lights,
+  });
+
   // 現在の配置の採点（重なり・動線・窓塞ぎ等の減点）
   const layoutScoreResult = scoreLayout({
     roomW: roomSize.widthCm,
@@ -323,6 +377,7 @@ export default function Home() {
     openings,
     items: placedItems,
     flowPaths,
+    lightGrid,
   });
 
   const sizeInputClass =
@@ -399,9 +454,15 @@ export default function Home() {
                 roomPolygon={roomPolygon}
                 blockedRects={blockedRects}
                 highlightUids={highlightUids}
+                northDeg={northDeg}
+                lightGrid={lightGrid}
+                showLight={showLight}
+                lights={lights}
                 onMove={handleMove}
                 onRemove={handleRemove}
                 onMoveOpening={handleMoveOpening}
+                onMoveLight={handleMoveLight}
+                onRemoveLight={handleRemoveLight}
               />
               {(lastRequests || placedItems.some((i) => !i.owned)) && (
                 <div className="flex w-full flex-wrap items-center gap-2">
@@ -448,6 +509,19 @@ export default function Home() {
                   生活動線（入口間の通路）を表示
                 </label>
               )}
+              <label className="flex w-full items-center gap-2 rounded-md border border-stone-200 bg-white px-3 py-2 text-sm text-stone-600">
+                <input
+                  type="checkbox"
+                  checked={showLight}
+                  onChange={(e) => setShowLight(e.target.checked)}
+                  className="h-4 w-4"
+                />
+                <span
+                  className="inline-block h-3 w-6 shrink-0 rounded"
+                  style={{ background: "linear-gradient(90deg, #334155, #f59e0b, #fef3c7)" }}
+                />
+                採光マップ（明るさ・影）を表示
+              </label>
             </>
           ) : (
             <Room3D
@@ -552,6 +626,12 @@ export default function Home() {
         </div>
         <div className="flex w-full max-w-md flex-col gap-6 lg:w-72">
           <RoomShapePanel shape={roomShape} roomSize={roomSize} onChange={setRoomShape} />
+          <LightingPanel
+            northDeg={northDeg}
+            timeOfDay={timeOfDay}
+            onChangeNorth={setNorthDeg}
+            onChangeTime={setTimeOfDay}
+          />
           <FloorPlanScanPanel roomSize={roomSize} onDetect={setRoomShape} />
           <AutoLayoutPanel onRun={runAutoLayout} />
           <BudgetLayoutPanel budget={budget} roomSize={roomSize} onRun={runAutoLayout} />
@@ -561,6 +641,11 @@ export default function Home() {
             roomSize={roomSize}
             onAdd={handleAddOpening}
             onRemove={handleRemoveOpening}
+          />
+          <LightFixturePanel
+            lights={lights}
+            onAdd={handleAddLight}
+            onRemove={handleRemoveLight}
           />
           <DataPanel />
         </div>

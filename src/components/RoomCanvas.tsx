@@ -6,6 +6,7 @@ import type Konva from "konva";
 import { FURNITURE_PALETTE } from "./furniturePalette";
 import { doorClearanceRects } from "./clearance";
 import type { FlowPath } from "./flowline";
+import { lightColor, type LightGrid, type Light } from "./lighting";
 
 const MAX_WIDTH = 700;
 const ASPECT = 500 / 700; // 高さ / 幅
@@ -44,9 +45,18 @@ type RoomCanvasProps = {
   blockedRects: { xCm: number; yCm: number; widthCm: number; depthCm: number }[];
   // 採点で減点対象になった家具（強調表示する）
   highlightUids?: string[];
+  // 部屋の方角（上の壁が向く方位。0=北）。コンパス表示に使う。
+  northDeg?: number;
+  // 採光マップ（ヒートマップ表示用）と表示フラグ
+  lightGrid?: LightGrid | null;
+  showLight?: boolean;
+  // 部屋の照明（ドラッグで移動、ダブルクリックで削除）
+  lights?: Light[];
   onMove: (uid: string, xCm: number, yCm: number) => void;
   onRemove: (uid: string) => void;
   onMoveOpening: (id: string, offsetCm: number) => void;
+  onMoveLight?: (id: string, xCm: number, yCm: number) => void;
+  onRemoveLight?: (id: string) => void;
 };
 
 export default function RoomCanvas({
@@ -58,9 +68,15 @@ export default function RoomCanvas({
   roomPolygon,
   blockedRects,
   highlightUids,
+  northDeg = 0,
+  lightGrid,
+  showLight = false,
+  lights,
   onMove,
   onRemove,
   onMoveOpening,
+  onMoveLight,
+  onRemoveLight,
 }: RoomCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [stageWidth, setStageWidth] = useState(MAX_WIDTH);
@@ -120,6 +136,34 @@ export default function RoomCanvas({
                   strokeWidth={3}
                   lineJoin="round"
                 />
+
+                {/* 採光ヒートマップ（部屋内セルのみ、家具の下に敷く） */}
+                {showLight &&
+                  lightGrid &&
+                  (() => {
+                    const { cols, rows, cell, values } = lightGrid;
+                    const cellPx = cell * scale;
+                    const rects = [];
+                    for (let r = 0; r < rows; r++) {
+                      for (let c = 0; c < cols; c++) {
+                        const v = values[r * cols + c];
+                        if (v < 0) continue;
+                        rects.push(
+                          <Rect
+                            key={`lt-${r}-${c}`}
+                            x={roomX + c * cellPx}
+                            y={roomY + r * cellPx}
+                            width={cellPx + 0.5}
+                            height={cellPx + 0.5}
+                            fill={lightColor(v)}
+                            opacity={0.55}
+                            listening={false}
+                          />
+                        );
+                      }
+                    }
+                    return rects;
+                  })()}
                 <Text
                   text={`横 ${widthCm} cm`}
                   x={roomX}
@@ -414,6 +458,86 @@ export default function RoomCanvas({
                     </Group>
                   );
                 })}
+
+                {/* 部屋の照明（ドラッグで移動、ダブルクリックで削除） */}
+                {(lights ?? []).map((lm) => {
+                  const isCeiling = lm.kind === "ceiling";
+                  const cxp = roomX + Math.min(Math.max(lm.xCm, 0), widthCm) * scale;
+                  const cyp = roomY + Math.min(Math.max(lm.yCm, 0), depthCm) * scale;
+                  return (
+                    <Group
+                      key={lm.id}
+                      x={cxp}
+                      y={cyp}
+                      draggable
+                      dragBoundFunc={(pos) => {
+                        const nx = Math.min(Math.max(pos.x, roomX), roomX + roomWidth);
+                        const ny = Math.min(Math.max(pos.y, roomY), roomY + roomDepth);
+                        return { x: nx, y: ny };
+                      }}
+                      onDragEnd={(e: Konva.KonvaEventObject<DragEvent>) => {
+                        const node = e.target;
+                        onMoveLight?.(
+                          lm.id,
+                          (node.x() - roomX) / scale,
+                          (node.y() - roomY) / scale
+                        );
+                      }}
+                      onDblClick={() => onRemoveLight?.(lm.id)}
+                      onDblTap={() => onRemoveLight?.(lm.id)}
+                    >
+                      <Circle
+                        radius={11}
+                        fill={isCeiling ? "#fde047" : "#fdba74"}
+                        stroke={isCeiling ? "#ca8a04" : "#ea580c"}
+                        strokeWidth={2}
+                        shadowColor={isCeiling ? "#facc15" : "#fb923c"}
+                        shadowBlur={12}
+                        shadowOpacity={0.8}
+                      />
+                      <Text
+                        text={isCeiling ? "☀" : "💡"}
+                        width={22}
+                        height={22}
+                        offsetX={11}
+                        offsetY={11}
+                        align="center"
+                        verticalAlign="middle"
+                        fontSize={12}
+                        listening={false}
+                      />
+                    </Group>
+                  );
+                })}
+
+                {/* 方位コンパス（右上）。上の壁が向く方角に合わせて北を指す。 */}
+                {(() => {
+                  const cx = stageWidth - 28;
+                  const cy = 28;
+                  const R = 15;
+                  const th = (-northDeg * Math.PI) / 180; // 画面上向きからの時計回り角
+                  const nx = cx + R * Math.sin(th);
+                  const ny = cy - R * Math.cos(th);
+                  const sx = cx - R * Math.sin(th);
+                  const sy = cy + R * Math.cos(th);
+                  return (
+                    <Group listening={false}>
+                      <Circle x={cx} y={cy} radius={R + 5} fill="#ffffff" opacity={0.85} stroke="#d6d3d1" strokeWidth={1} />
+                      <Line points={[cx, cy, sx, sy]} stroke="#9ca3af" strokeWidth={2} lineCap="round" />
+                      <Line points={[cx, cy, nx, ny]} stroke="#dc2626" strokeWidth={2} lineCap="round" />
+                      <Text
+                        text="N"
+                        x={cx + (R + 6) * Math.sin(th) - 5}
+                        y={cy - (R + 6) * Math.cos(th) - 6}
+                        width={10}
+                        align="center"
+                        fontSize={11}
+                        fontStyle="bold"
+                        fill="#dc2626"
+                      />
+                    </Group>
+                  );
+                })()}
               </Layer>
             </Stage>
           );

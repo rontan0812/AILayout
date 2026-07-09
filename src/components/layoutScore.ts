@@ -5,6 +5,10 @@ import type { PlacedItem, Opening } from "./RoomCanvas";
 import type { FlowPath } from "./flowline";
 import { pointInPolygon, type PolyPoint, type BlockRect } from "./roomShape";
 import { doorClearanceRects, openingFrontRect, WINDOW_FRONT_CM } from "./clearance";
+import { sampleLight, type LightGrid } from "./lighting";
+
+// これ未満を「暗い」とみなす明るさ
+const DARK_THRESHOLD = 0.35;
 
 export type Deduction = {
   id: string;
@@ -51,8 +55,10 @@ export function scoreLayout(params: {
   openings: Opening[];
   items: PlacedItem[];
   flowPaths: FlowPath[];
+  lightGrid?: LightGrid | null;
 }): LayoutScore {
-  const { roomW: W, roomD: D, polygon, blockedRects, openings, items, flowPaths } = params;
+  const { roomW: W, roomD: D, polygon, blockedRects, openings, items, flowPaths, lightGrid } =
+    params;
   const deductions: Deduction[] = [];
 
   if (!(W > 0) || !(D > 0) || items.length === 0) {
@@ -193,6 +199,40 @@ export function scoreLayout(params: {
     const ratio = furnitureArea / roomArea;
     if (ratio > 0.75) add("crowded", "家具が多く、部屋がかなり手狭です", 15, []);
     else if (ratio > 0.6) add("crowded", "家具がやや多く、通路が窮屈です", 8, []);
+  }
+
+  // H. 採光・暗がり（採光マップがあるとき）
+  if (lightGrid) {
+    // 部屋全体の暗い割合
+    let inRoom = 0;
+    let dark = 0;
+    for (let i = 0; i < lightGrid.values.length; i++) {
+      const v = lightGrid.values[i];
+      if (v < 0) continue;
+      inRoom++;
+      if (v < DARK_THRESHOLD) dark++;
+    }
+    if (inRoom > 0) {
+      const ratio = dark / inRoom;
+      if (ratio > 0.5) add("dark-room", "部屋に暗い場所が多いです（窓や照明を見直しましょう）", 12, []);
+      else if (ratio > 0.3) add("dark-room", "やや暗い場所があります", 6, []);
+    }
+
+    // デスクの採光（暗い机は作業に不向き）
+    let pts = 0;
+    const uids = new Set<string>();
+    for (const it of items) {
+      if (it.type !== "デスク") continue;
+      const v = sampleLight(lightGrid, it.xCm + it.widthCm / 2, it.yCm + it.depthCm / 2);
+      if (v >= 0 && v < DARK_THRESHOLD) {
+        pts += 5;
+        uids.add(it.uid);
+      }
+    }
+    if (pts > 0)
+      add("dark-desk", "デスクが暗い位置にあります（窓際や照明の近くが快適）", Math.min(pts, 10), [
+        ...uids,
+      ]);
   }
 
   const total = deductions.reduce((s, d) => s + d.points, 0);
