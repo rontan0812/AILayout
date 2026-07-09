@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import RoomSizeForm, { type RoomSize } from "@/components/RoomSizeForm";
 import FurniturePresetPanel from "@/components/FurniturePresetPanel";
@@ -15,6 +15,9 @@ import ScorePanel from "@/components/ScorePanel";
 import CollapsibleSection from "@/components/CollapsibleSection";
 import LightingPanel from "@/components/LightingPanel";
 import LightFixturePanel from "@/components/LightFixturePanel";
+import SharePanel from "@/components/SharePanel";
+import ShareBanner from "@/components/ShareBanner";
+import { useSharedRoom, type RoomDoc } from "@/components/useSharedRoom";
 import {
   DEFAULT_NORTH_DEG,
   DEFAULT_TIME,
@@ -169,6 +172,39 @@ export default function Home() {
       // 保存に失敗しても致命的ではないので無視
     }
   }, [roomSize, roomShape, placedItems, openings, budget, northDeg, timeOfDay, lights, loaded]);
+
+  // --- 共有ルーム同期（T-共有-2）---
+  // 共有対象のドキュメント（localStorage と同じ内容）をJSON化。
+  // 文字列は内容が変わらない限り値が同じなので、送信effectの無駄な再実行を防げる。
+  const shareDocJson = loaded
+    ? JSON.stringify({
+        roomSize,
+        roomShape,
+        placedItems,
+        openings,
+        budget,
+        northDeg,
+        timeOfDay,
+        lights,
+      })
+    : "";
+  // リモートから受け取った状態をローカルへ反映する
+  const applyRemoteDoc = useCallback((d: RoomDoc) => {
+    const r = d as Record<string, unknown>;
+    if (r.roomSize) setRoomSize(r.roomSize as RoomSize);
+    if (r.roomShape) setRoomShape(r.roomShape as RoomShape);
+    if (Array.isArray(r.placedItems)) setPlacedItems(r.placedItems as PlacedItem[]);
+    if (Array.isArray(r.openings)) setOpenings(r.openings as Opening[]);
+    if (typeof r.budget === "number") setBudget(r.budget);
+    if (typeof r.northDeg === "number") setNorthDeg(r.northDeg);
+    if (typeof r.timeOfDay === "number") setTimeOfDay(r.timeOfDay);
+    if (Array.isArray(r.lights)) setLights(r.lights as Light[]);
+  }, []);
+  const share = useSharedRoom({
+    docJson: shareDocJson,
+    applyRemote: applyRemoteDoc,
+    ready: loaded,
+  });
 
   // --- Undo/Redo（配置系: 家具・開口部・照明の履歴） ---
   const historyRef = useRef<{ past: HistSnapshot[]; present: HistSnapshot | null; future: HistSnapshot[] }>({
@@ -482,6 +518,7 @@ export default function Home() {
   return (
     <main className="flex min-h-screen flex-col items-center gap-6 bg-stone-100 p-4 sm:p-8">
       <h1 className="text-xl font-bold text-stone-800 sm:text-2xl">家具配置シミュレーター</h1>
+      <ShareBanner share={share} />
       <div className="flex w-full max-w-5xl flex-col items-center gap-8 lg:flex-row lg:items-start lg:justify-center">
         <div className="flex w-full max-w-[700px] flex-col items-center gap-6">
           <RoomSizeForm value={roomSize} onChange={setRoomSize} />
@@ -788,6 +825,10 @@ export default function Home() {
               onAdd={handleAddLight}
               onRemove={handleRemoveLight}
             />
+          </CollapsibleSection>
+
+          <CollapsibleSection title="共有" icon="🔗">
+            <SharePanel share={share} />
           </CollapsibleSection>
 
           <CollapsibleSection title="データの保存・読み込み" icon="💾">
