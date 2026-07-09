@@ -99,6 +99,9 @@ export default function Home() {
   // 直近の自動レイアウト要求（別案生成に使う）と別案シード
   const [lastRequests, setLastRequests] = useState<LayoutRequest[] | null>(null);
   const [rerollSeed, setRerollSeed] = useState(0);
+  // 採点の減点理由にホバー中、キャンバスで強調する家具と該当減点ID
+  const [highlightUids, setHighlightUids] = useState<string[]>([]);
+  const [activeDeduction, setActiveDeduction] = useState<string | null>(null);
   // localStorage 読み込み完了フラグ（読み込み前の初期値で保存して上書きしないため）
   const [loaded, setLoaded] = useState(false);
 
@@ -395,6 +398,7 @@ export default function Home() {
                 flowPaths={showFlow ? flowPaths : []}
                 roomPolygon={roomPolygon}
                 blockedRects={blockedRects}
+                highlightUids={highlightUids}
                 onMove={handleMove}
                 onRemove={handleRemove}
                 onMoveOpening={handleMoveOpening}
@@ -459,7 +463,16 @@ export default function Home() {
               ⚠️ 窓の前に家具があります（{blockedWindowCount}箇所）。窓を塞いでいないか確認してください。
             </div>
           )}
-          {placedItems.length > 0 && <ScorePanel result={layoutScoreResult} />}
+          {placedItems.length > 0 && (
+            <ScorePanel
+              result={layoutScoreResult}
+              activeId={activeDeduction}
+              onHover={(uids, id) => {
+                setHighlightUids(uids);
+                setActiveDeduction(id);
+              }}
+            />
+          )}
           {placedItems.length > 0 && (
             <div className="flex w-full flex-col gap-2">
               <ul className="flex flex-col gap-1.5">
