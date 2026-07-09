@@ -5,6 +5,7 @@ import type { Opening } from "./RoomCanvas";
 
 type OpeningPanelProps = {
   openings: Opening[];
+  roomSize: { widthCm: number; depthCm: number };
   onAdd: (opening: Omit<Opening, "id">) => void;
   onRemove: (id: string) => void;
 };
@@ -16,7 +17,12 @@ const WALL_LABELS: Record<Opening["wall"], string> = {
   right: "右",
 };
 
-export default function OpeningPanel({ openings, onAdd, onRemove }: OpeningPanelProps) {
+export default function OpeningPanel({
+  openings,
+  roomSize,
+  onAdd,
+  onRemove,
+}: OpeningPanelProps) {
   const [wall, setWall] = useState<Opening["wall"]>("top");
   const [kind, setKind] = useState<Opening["kind"]>("door");
   const [offsetCm, setOffsetCm] = useState(100);
@@ -25,11 +31,19 @@ export default function OpeningPanel({ openings, onAdd, onRemove }: OpeningPanel
   const inputClass =
     "w-full rounded-md border border-stone-300 bg-white px-2 py-1 text-sm text-stone-800 focus:border-blue-500 focus:outline-none";
 
+  // 選択中の壁の長さ。スライダーの範囲に使う。
+  const wallLen =
+    wall === "top" || wall === "bottom" ? roomSize.widthCm : roomSize.depthCm;
+  const half = widthCm / 2;
+  const sliderMin = Math.round(half);
+  const sliderMax = Math.max(sliderMin, Math.round(wallLen - half));
+  const clampedOffset = Math.min(Math.max(offsetCm, sliderMin), sliderMax);
+
   return (
     <section className="flex w-full max-w-md flex-col gap-3 lg:w-72">
       <h2 className="text-lg font-semibold text-stone-800">入口・窓</h2>
       <p className="text-xs text-stone-500">
-        壁の辺に入口（ドア）や窓を置きます。位置は辺の始点からの中心位置(cm)です。
+        壁の辺に入口（ドア）や窓を置きます。追加後はキャンバス上のマーカーを壁に沿ってドラッグして位置を調整できます。
       </p>
 
       <div className="grid grid-cols-2 gap-2">
@@ -58,18 +72,6 @@ export default function OpeningPanel({ openings, onAdd, onRemove }: OpeningPanel
           </select>
         </label>
         <label className="flex flex-col gap-1 text-xs text-stone-600">
-          位置(cm)
-          <input
-            type="number"
-            min={0}
-            value={offsetCm}
-            onChange={(e) =>
-              setOffsetCm(Number.isFinite(e.target.valueAsNumber) ? e.target.valueAsNumber : 0)
-            }
-            className={inputClass}
-          />
-        </label>
-        <label className="flex flex-col gap-1 text-xs text-stone-600">
           幅(cm)
           <input
             type="number"
@@ -81,10 +83,26 @@ export default function OpeningPanel({ openings, onAdd, onRemove }: OpeningPanel
             className={inputClass}
           />
         </label>
+        <label className="col-span-2 flex flex-col gap-1 text-xs text-stone-600">
+          <span className="flex justify-between">
+            <span>位置</span>
+            <span className="text-stone-400">
+              {clampedOffset} / {Math.round(wallLen)} cm
+            </span>
+          </span>
+          <input
+            type="range"
+            min={sliderMin}
+            max={sliderMax}
+            value={clampedOffset}
+            onChange={(e) => setOffsetCm(e.target.valueAsNumber)}
+            className="w-full accent-blue-600"
+          />
+        </label>
       </div>
       <button
         type="button"
-        onClick={() => onAdd({ wall, kind, offsetCm, widthCm })}
+        onClick={() => onAdd({ wall, kind, offsetCm: clampedOffset, widthCm })}
         className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
       >
         追加

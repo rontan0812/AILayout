@@ -39,8 +39,12 @@ type RoomCanvasProps = {
   placedItems: PlacedItem[];
   openings: Opening[];
   flowPaths: FlowPath[];
+  roomPolygon: { xCm: number; yCm: number }[];
+  // 部屋外の欠け領域など、家具を置けない矩形（L字の凹み等）
+  blockedRects: { xCm: number; yCm: number; widthCm: number; depthCm: number }[];
   onMove: (uid: string, xCm: number, yCm: number) => void;
   onRemove: (uid: string) => void;
+  onMoveOpening: (id: string, offsetCm: number) => void;
 };
 
 export default function RoomCanvas({
@@ -49,8 +53,11 @@ export default function RoomCanvas({
   placedItems,
   openings,
   flowPaths,
+  roomPolygon,
+  blockedRects,
   onMove,
   onRemove,
+  onMoveOpening,
 }: RoomCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [stageWidth, setStageWidth] = useState(MAX_WIDTH);
@@ -98,14 +105,16 @@ export default function RoomCanvas({
               className="rounded-lg border border-stone-300 bg-white shadow-sm"
             >
               <Layer>
-                <Rect
-                  x={roomX}
-                  y={roomY}
-                  width={roomWidth}
-                  height={roomDepth}
+                <Line
+                  points={roomPolygon.flatMap((p) => [
+                    roomX + p.xCm * scale,
+                    roomY + p.yCm * scale,
+                  ])}
+                  closed
                   fill="#fafaf9"
                   stroke="#57534e"
                   strokeWidth={3}
+                  lineJoin="round"
                 />
                 <Text
                   text={`横 ${widthCm} cm`}
@@ -142,32 +151,72 @@ export default function RoomCanvas({
                 ))}
 
                 {openings.map((op) => {
-                  const wallLen =
-                    op.wall === "top" || op.wall === "bottom" ? widthCm : depthCm;
+                  const horizontal = op.wall === "top" || op.wall === "bottom";
+                  const wallLen = horizontal ? widthCm : depthCm;
                   const half = op.widthCm / 2;
                   const center = Math.min(Math.max(op.offsetCm, half), wallLen - half);
-                  const start = center - half;
-                  const end = center + half;
-                  let points: number[];
+                  const halfPx = half * scale;
+                  const color = op.kind === "door" ? "#c2410c" : "#0369a1";
+                  // 壁の辺上の中心座標（この点にGroupを置き、ドラッグで辺に沿って動かす）
+                  let cx: number;
+                  let cy: number;
                   if (op.wall === "top") {
-                    points = [roomX + start * scale, roomY, roomX + end * scale, roomY];
+                    cx = roomX + center * scale;
+                    cy = roomY;
                   } else if (op.wall === "bottom") {
-                    const y = roomY + roomDepth;
-                    points = [roomX + start * scale, y, roomX + end * scale, y];
+                    cx = roomX + center * scale;
+                    cy = roomY + roomDepth;
                   } else if (op.wall === "left") {
-                    points = [roomX, roomY + start * scale, roomX, roomY + end * scale];
+                    cx = roomX;
+                    cy = roomY + center * scale;
                   } else {
-                    const x = roomX + roomWidth;
-                    points = [x, roomY + start * scale, x, roomY + end * scale];
+                    cx = roomX + roomWidth;
+                    cy = roomY + center * scale;
                   }
                   return (
-                    <Line
+                    <Group
                       key={op.id}
-                      points={points}
-                      stroke={op.kind === "door" ? "#c2410c" : "#0369a1"}
-                      strokeWidth={6}
-                      lineCap="round"
-                    />
+                      x={cx}
+                      y={cy}
+                      draggable
+                      onMouseEnter={(e) => {
+                        const c = e.target.getStage()?.container();
+                        if (c) c.style.cursor = "grab";
+                      }}
+                      onMouseLeave={(e) => {
+                        const c = e.target.getStage()?.container();
+                        if (c) c.style.cursor = "default";
+                      }}
+                      dragBoundFunc={(pos) => {
+                        // 開口部は自分の壁の辺上だけを動ける。中心が [half, wallLen-half] に収まるよう制限。
+                        if (horizontal) {
+                          const minX = roomX + halfPx;
+                          const maxX = roomX + roomWidth - halfPx;
+                          return { x: Math.min(Math.max(pos.x, minX), maxX), y: cy };
+                        }
+                        const minY = roomY + halfPx;
+                        const maxY = roomY + roomDepth - halfPx;
+                        return { x: cx, y: Math.min(Math.max(pos.y, minY), maxY) };
+                      }}
+                      onDragEnd={(e: Konva.KonvaEventObject<DragEvent>) => {
+                        const node = e.target;
+                        const offset = horizontal
+                          ? (node.x() - roomX) / scale
+                          : (node.y() - roomY) / scale;
+                        onMoveOpening(op.id, offset);
+                      }}
+                    >
+                      {/* 掴みやすいマーカー。辺に沿った太線＋つまみ。 */}
+                      <Rect
+                        x={horizontal ? -halfPx : -5}
+                        y={horizontal ? -5 : -halfPx}
+                        width={horizontal ? halfPx * 2 : 10}
+                        height={horizontal ? 10 : halfPx * 2}
+                        fill={color}
+                        cornerRadius={5}
+                      />
+                      <Circle radius={7} fill="#ffffff" stroke={color} strokeWidth={2} />
+                    </Group>
                   );
                 })}
 
@@ -191,7 +240,7 @@ export default function RoomCanvas({
                         dragRef.current = { x: clampedXCm, y: clampedYCm };
                       }}
                       dragBoundFunc={(pos) => {
-                        // 他の家具＋入口前クリアランス帯を障害物として扱う
+                        // 他の家具＋入口前クリアランス帯＋部屋外の欠け領域を障害物として扱う
                         const others = [
                           ...placedItems
                             .filter((o) => o.uid !== item.uid)
@@ -202,6 +251,7 @@ export default function RoomCanvas({
                               depthCm: o.depthCm,
                             })),
                           ...clearanceRects,
+                          ...blockedRects,
                         ];
                         const iw = item.widthCm;
                         const id = item.depthCm;

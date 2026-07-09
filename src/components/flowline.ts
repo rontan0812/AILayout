@@ -14,11 +14,14 @@ export const FLOW_MIN_WIDTH_CM = 60;
 
 // 家具を障害物としたグリッド上で、入口どうしを最短経路で結ぶ生活動線を計算する。
 // 入口が2つ以上あるときに、入口を順につなぐ経路を返す。
+export type BlockRect = { xCm: number; yCm: number; widthCm: number; depthCm: number };
+
 export function computeFlowPaths(
   roomW: number,
   roomD: number,
   items: PlacedItem[],
-  openings: Opening[]
+  openings: Opening[],
+  blockedRects: BlockRect[] = []
 ): FlowPath[] {
   const doors = openings.filter((o) => o.kind === "door");
   if (doors.length < 2 || roomW <= 0 || roomD <= 0) return [];
@@ -29,19 +32,21 @@ export function computeFlowPaths(
   const rows = Math.max(1, Math.ceil(roomD / cell));
   const idx = (c: number, r: number) => r * cols + c;
 
-  // 家具の占有セルを通行不可にする
+  // 家具の占有セル＋部屋外の欠け領域を通行不可にする
   const blocked = new Uint8Array(cols * rows);
-  for (const it of items) {
-    const c0 = Math.floor(it.xCm / cell);
-    const c1 = Math.floor((it.xCm + it.widthCm - 0.001) / cell);
-    const r0 = Math.floor(it.yCm / cell);
-    const r1 = Math.floor((it.yCm + it.depthCm - 0.001) / cell);
+  const blockCells = (x: number, y: number, w: number, d: number) => {
+    const c0 = Math.floor(x / cell);
+    const c1 = Math.floor((x + w - 0.001) / cell);
+    const r0 = Math.floor(y / cell);
+    const r1 = Math.floor((y + d - 0.001) / cell);
     for (let r = Math.max(0, r0); r <= Math.min(rows - 1, r1); r++) {
       for (let c = Math.max(0, c0); c <= Math.min(cols - 1, c1); c++) {
         blocked[idx(c, r)] = 1;
       }
     }
-  }
+  };
+  for (const it of items) blockCells(it.xCm, it.yCm, it.widthCm, it.depthCm);
+  for (const b of blockedRects) blockCells(b.xCm, b.yCm, b.widthCm, b.depthCm);
 
   // 入口の室内側セル（壁の辺の中心付近）
   const doorCell = (op: Opening) => {
