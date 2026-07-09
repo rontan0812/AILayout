@@ -323,14 +323,45 @@ export default function RoomCanvas({
                         const id = item.depthCm;
                         const prev = dragRef.current ?? { x: clampedXCm, y: clampedYCm };
                         // 提案位置（部屋内にクランプ）
-                        const targetX = Math.min(
+                        const rawX = Math.min(
                           Math.max((pos.x - roomX) / scale, 0),
                           widthCm - iw
                         );
-                        const targetY = Math.min(
+                        const rawY = Math.min(
                           Math.max((pos.y - roomY) / scale, 0),
                           depthCm - id
                         );
+
+                        // グリッド吸着＋壁/隣接家具へのスナップ（感覚的に揃えやすく）
+                        const SNAP_TOL = 8;
+                        const GRID = 5;
+                        const neighbors = placedItems.filter((o) => o.uid !== item.uid);
+                        const snap = (
+                          v: number,
+                          max: number,
+                          cands: number[]
+                        ) => {
+                          let bestC = v;
+                          let bestD = SNAP_TOL;
+                          for (const c of cands) {
+                            if (c < 0 || c > max) continue;
+                            const d = Math.abs(c - v);
+                            if (d < bestD) {
+                              bestD = d;
+                              bestC = c;
+                            }
+                          }
+                          if (bestD < SNAP_TOL) return bestC;
+                          return Math.min(Math.max(Math.round(v / GRID) * GRID, 0), max);
+                        };
+                        const candX = [0, widthCm - iw];
+                        const candY = [0, depthCm - id];
+                        for (const o of neighbors) {
+                          candX.push(o.xCm, o.xCm + o.widthCm - iw, o.xCm + o.widthCm, o.xCm - iw);
+                          candY.push(o.yCm, o.yCm + o.depthCm - id, o.yCm + o.depthCm, o.yCm - id);
+                        }
+                        const targetX = snap(rawX, widthCm - iw, candX);
+                        const targetY = snap(rawY, depthCm - id, candY);
 
                         // X軸: 進行方向にある家具の手前で止める（前フレーム位置基準なので貫通しない）
                         let nx = targetX;
