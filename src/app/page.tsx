@@ -12,6 +12,7 @@ import FloorPlanScanPanel from "@/components/FloorPlanScanPanel";
 import AutoLayoutPanel from "@/components/AutoLayoutPanel";
 import BudgetLayoutPanel from "@/components/BudgetLayoutPanel";
 import ScorePanel from "@/components/ScorePanel";
+import CollapsibleSection from "@/components/CollapsibleSection";
 import LightingPanel from "@/components/LightingPanel";
 import LightFixturePanel from "@/components/LightFixturePanel";
 import {
@@ -624,30 +625,41 @@ export default function Home() {
             </div>
           )}
         </div>
-        <div className="flex w-full max-w-md flex-col gap-6 lg:w-72">
-          <RoomShapePanel shape={roomShape} roomSize={roomSize} onChange={setRoomShape} />
-          <LightingPanel
-            northDeg={northDeg}
-            timeOfDay={timeOfDay}
-            onChangeNorth={setNorthDeg}
-            onChangeTime={setTimeOfDay}
-          />
-          <FloorPlanScanPanel roomSize={roomSize} onDetect={setRoomShape} />
-          <AutoLayoutPanel onRun={runAutoLayout} />
-          <BudgetLayoutPanel budget={budget} roomSize={roomSize} onRun={runAutoLayout} />
-          <FurniturePresetPanel onPlace={handlePlacePreset} />
-          <OpeningPanel
-            openings={openings}
-            roomSize={roomSize}
-            onAdd={handleAddOpening}
-            onRemove={handleRemoveOpening}
-          />
-          <LightFixturePanel
-            lights={lights}
-            onAdd={handleAddLight}
-            onRemove={handleRemoveLight}
-          />
-          <DataPanel />
+        <div className="flex w-full max-w-md flex-col gap-3 lg:w-72">
+          <CollapsibleSection title="家具を置く" icon="🛋" defaultOpen>
+            <AutoLayoutPanel onRun={runAutoLayout} />
+            <BudgetLayoutPanel budget={budget} roomSize={roomSize} onRun={runAutoLayout} />
+            <FurniturePresetPanel onPlace={handlePlacePreset} />
+          </CollapsibleSection>
+
+          <CollapsibleSection title="部屋の形・入口" icon="🏠">
+            <RoomShapePanel shape={roomShape} roomSize={roomSize} onChange={setRoomShape} />
+            <OpeningPanel
+              openings={openings}
+              roomSize={roomSize}
+              onAdd={handleAddOpening}
+              onRemove={handleRemoveOpening}
+            />
+            <FloorPlanScanPanel roomSize={roomSize} onDetect={setRoomShape} />
+          </CollapsibleSection>
+
+          <CollapsibleSection title="方角・採光・照明" icon="💡">
+            <LightingPanel
+              northDeg={northDeg}
+              timeOfDay={timeOfDay}
+              onChangeNorth={setNorthDeg}
+              onChangeTime={setTimeOfDay}
+            />
+            <LightFixturePanel
+              lights={lights}
+              onAdd={handleAddLight}
+              onRemove={handleRemoveLight}
+            />
+          </CollapsibleSection>
+
+          <CollapsibleSection title="データの保存・読み込み" icon="💾">
+            <DataPanel />
+          </CollapsibleSection>
         </div>
       </div>
       <ProposalPanel placedItems={placedItems} budget={budget} />
