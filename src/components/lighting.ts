@@ -212,6 +212,30 @@ export function computeLightGrid(params: {
   return { cols, rows, cell, values };
 }
 
+// 明るさ(0〜約1.3)をヒートマップ色に変換する（暗い=紺, 明るい=淡い黄）
+export function lightColor(v: number): string {
+  const n = Math.min(1, Math.max(0, v / 1.1));
+  // 3色補間: 紺(#334155) → 橙(#f59e0b) → 淡黄(#fef3c7)
+  const stops: [number, [number, number, number]][] = [
+    [0, [51, 65, 85]],
+    [0.5, [245, 158, 11]],
+    [1, [254, 243, 199]],
+  ];
+  let lo = stops[0];
+  let hi = stops[stops.length - 1];
+  for (let i = 0; i < stops.length - 1; i++) {
+    if (n >= stops[i][0] && n <= stops[i + 1][0]) {
+      lo = stops[i];
+      hi = stops[i + 1];
+      break;
+    }
+  }
+  const span = hi[0] - lo[0] || 1;
+  const f = (n - lo[0]) / span;
+  const ch = (a: number, b: number) => Math.round(a + (b - a) * f);
+  return `rgb(${ch(lo[1][0], hi[1][0])},${ch(lo[1][1], hi[1][1])},${ch(lo[1][2], hi[1][2])})`;
+}
+
 // 採光マップ上の座標(cm)の明るさを取得（部屋外は-1）
 export function sampleLight(grid: LightGrid, xCm: number, yCm: number): number {
   const c = Math.min(grid.cols - 1, Math.max(0, Math.floor(xCm / grid.cell)));

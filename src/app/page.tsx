@@ -13,7 +13,7 @@ import AutoLayoutPanel from "@/components/AutoLayoutPanel";
 import BudgetLayoutPanel from "@/components/BudgetLayoutPanel";
 import ScorePanel from "@/components/ScorePanel";
 import LightingPanel from "@/components/LightingPanel";
-import { DEFAULT_NORTH_DEG, DEFAULT_TIME } from "@/components/lighting";
+import { DEFAULT_NORTH_DEG, DEFAULT_TIME, computeLightGrid } from "@/components/lighting";
 import { autoLayout, type LayoutRequest } from "@/components/autoLayout";
 import { scoreLayout } from "@/components/layoutScore";
 import {
@@ -99,6 +99,7 @@ export default function Home() {
   // 方角（上の壁が向く方位）と時間帯
   const [northDeg, setNorthDeg] = useState(DEFAULT_NORTH_DEG);
   const [timeOfDay, setTimeOfDay] = useState(DEFAULT_TIME);
+  const [showLight, setShowLight] = useState(false);
   // 自動レイアウトの結果メッセージ（置ききれなかった等）
   const [layoutNote, setLayoutNote] = useState("");
   // 直近の自動レイアウト要求（別案生成に使う）と別案シード
@@ -321,6 +322,18 @@ export default function Home() {
   // 部屋の形（矩形/L字）のポリゴン頂点
   const roomPolygon = computeRoomPolygon(roomShape, roomSize.widthCm, roomSize.depthCm);
 
+  // 採光マップ（可視化・採点に使用）
+  const lightGrid = computeLightGrid({
+    roomW: roomSize.widthCm,
+    roomD: roomSize.depthCm,
+    polygon: roomPolygon,
+    blockedRects,
+    openings,
+    items: placedItems,
+    northDeg,
+    timeOfDay,
+  });
+
   // 現在の配置の採点（重なり・動線・窓塞ぎ等の減点）
   const layoutScoreResult = scoreLayout({
     roomW: roomSize.widthCm,
@@ -407,6 +420,8 @@ export default function Home() {
                 blockedRects={blockedRects}
                 highlightUids={highlightUids}
                 northDeg={northDeg}
+                lightGrid={lightGrid}
+                showLight={showLight}
                 onMove={handleMove}
                 onRemove={handleRemove}
                 onMoveOpening={handleMoveOpening}
@@ -456,6 +471,19 @@ export default function Home() {
                   生活動線（入口間の通路）を表示
                 </label>
               )}
+              <label className="flex w-full items-center gap-2 rounded-md border border-stone-200 bg-white px-3 py-2 text-sm text-stone-600">
+                <input
+                  type="checkbox"
+                  checked={showLight}
+                  onChange={(e) => setShowLight(e.target.checked)}
+                  className="h-4 w-4"
+                />
+                <span
+                  className="inline-block h-3 w-6 shrink-0 rounded"
+                  style={{ background: "linear-gradient(90deg, #334155, #f59e0b, #fef3c7)" }}
+                />
+                採光マップ（明るさ・影）を表示
+              </label>
             </>
           ) : (
             <Room3D

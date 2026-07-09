@@ -6,6 +6,7 @@ import type Konva from "konva";
 import { FURNITURE_PALETTE } from "./furniturePalette";
 import { doorClearanceRects } from "./clearance";
 import type { FlowPath } from "./flowline";
+import { lightColor, type LightGrid } from "./lighting";
 
 const MAX_WIDTH = 700;
 const ASPECT = 500 / 700; // 高さ / 幅
@@ -46,6 +47,9 @@ type RoomCanvasProps = {
   highlightUids?: string[];
   // 部屋の方角（上の壁が向く方位。0=北）。コンパス表示に使う。
   northDeg?: number;
+  // 採光マップ（ヒートマップ表示用）と表示フラグ
+  lightGrid?: LightGrid | null;
+  showLight?: boolean;
   onMove: (uid: string, xCm: number, yCm: number) => void;
   onRemove: (uid: string) => void;
   onMoveOpening: (id: string, offsetCm: number) => void;
@@ -61,6 +65,8 @@ export default function RoomCanvas({
   blockedRects,
   highlightUids,
   northDeg = 0,
+  lightGrid,
+  showLight = false,
   onMove,
   onRemove,
   onMoveOpening,
@@ -123,6 +129,34 @@ export default function RoomCanvas({
                   strokeWidth={3}
                   lineJoin="round"
                 />
+
+                {/* 採光ヒートマップ（部屋内セルのみ、家具の下に敷く） */}
+                {showLight &&
+                  lightGrid &&
+                  (() => {
+                    const { cols, rows, cell, values } = lightGrid;
+                    const cellPx = cell * scale;
+                    const rects = [];
+                    for (let r = 0; r < rows; r++) {
+                      for (let c = 0; c < cols; c++) {
+                        const v = values[r * cols + c];
+                        if (v < 0) continue;
+                        rects.push(
+                          <Rect
+                            key={`lt-${r}-${c}`}
+                            x={roomX + c * cellPx}
+                            y={roomY + r * cellPx}
+                            width={cellPx + 0.5}
+                            height={cellPx + 0.5}
+                            fill={lightColor(v)}
+                            opacity={0.55}
+                            listening={false}
+                          />
+                        );
+                      }
+                    }
+                    return rects;
+                  })()}
                 <Text
                   text={`横 ${widthCm} cm`}
                   x={roomX}
