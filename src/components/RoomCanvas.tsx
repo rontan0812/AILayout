@@ -44,6 +44,8 @@ type RoomCanvasProps = {
   blockedRects: { xCm: number; yCm: number; widthCm: number; depthCm: number }[];
   // 採点で減点対象になった家具（強調表示する）
   highlightUids?: string[];
+  // 部屋の方角（上の壁が向く方位。0=北）。コンパス表示に使う。
+  northDeg?: number;
   onMove: (uid: string, xCm: number, yCm: number) => void;
   onRemove: (uid: string) => void;
   onMoveOpening: (id: string, offsetCm: number) => void;
@@ -58,6 +60,7 @@ export default function RoomCanvas({
   roomPolygon,
   blockedRects,
   highlightUids,
+  northDeg = 0,
   onMove,
   onRemove,
   onMoveOpening,
@@ -414,6 +417,35 @@ export default function RoomCanvas({
                     </Group>
                   );
                 })}
+
+                {/* 方位コンパス（右上）。上の壁が向く方角に合わせて北を指す。 */}
+                {(() => {
+                  const cx = stageWidth - 28;
+                  const cy = 28;
+                  const R = 15;
+                  const th = (-northDeg * Math.PI) / 180; // 画面上向きからの時計回り角
+                  const nx = cx + R * Math.sin(th);
+                  const ny = cy - R * Math.cos(th);
+                  const sx = cx - R * Math.sin(th);
+                  const sy = cy + R * Math.cos(th);
+                  return (
+                    <Group listening={false}>
+                      <Circle x={cx} y={cy} radius={R + 5} fill="#ffffff" opacity={0.85} stroke="#d6d3d1" strokeWidth={1} />
+                      <Line points={[cx, cy, sx, sy]} stroke="#9ca3af" strokeWidth={2} lineCap="round" />
+                      <Line points={[cx, cy, nx, ny]} stroke="#dc2626" strokeWidth={2} lineCap="round" />
+                      <Text
+                        text="N"
+                        x={cx + (R + 6) * Math.sin(th) - 5}
+                        y={cy - (R + 6) * Math.cos(th) - 6}
+                        width={10}
+                        align="center"
+                        fontSize={11}
+                        fontStyle="bold"
+                        fill="#dc2626"
+                      />
+                    </Group>
+                  );
+                })()}
               </Layer>
             </Stage>
           );

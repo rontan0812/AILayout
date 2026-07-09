@@ -12,6 +12,8 @@ import FloorPlanScanPanel from "@/components/FloorPlanScanPanel";
 import AutoLayoutPanel from "@/components/AutoLayoutPanel";
 import BudgetLayoutPanel from "@/components/BudgetLayoutPanel";
 import ScorePanel from "@/components/ScorePanel";
+import LightingPanel from "@/components/LightingPanel";
+import { DEFAULT_NORTH_DEG, DEFAULT_TIME } from "@/components/lighting";
 import { autoLayout, type LayoutRequest } from "@/components/autoLayout";
 import { scoreLayout } from "@/components/layoutScore";
 import {
@@ -94,6 +96,9 @@ export default function Home() {
   const [budget, setBudget] = useState<number>(0);
   const [showFlow, setShowFlow] = useState(true);
   const [viewMode, setViewMode] = useState<"2d" | "3d">("2d");
+  // 方角（上の壁が向く方位）と時間帯
+  const [northDeg, setNorthDeg] = useState(DEFAULT_NORTH_DEG);
+  const [timeOfDay, setTimeOfDay] = useState(DEFAULT_TIME);
   // 自動レイアウトの結果メッセージ（置ききれなかった等）
   const [layoutNote, setLayoutNote] = useState("");
   // 直近の自動レイアウト要求（別案生成に使う）と別案シード
@@ -118,6 +123,8 @@ export default function Home() {
         if (Array.isArray(saved.placedItems)) setPlacedItems(saved.placedItems);
         if (Array.isArray(saved.openings)) setOpenings(saved.openings);
         if (typeof saved.budget === "number") setBudget(saved.budget);
+        if (typeof saved.northDeg === "number") setNorthDeg(saved.northDeg);
+        if (typeof saved.timeOfDay === "number") setTimeOfDay(saved.timeOfDay);
       }
     } catch {
       // 壊れたデータは無視して初期状態で始める
@@ -132,12 +139,12 @@ export default function Home() {
     try {
       localStorage.setItem(
         STORAGE_KEY,
-        JSON.stringify({ roomSize, roomShape, placedItems, openings, budget })
+        JSON.stringify({ roomSize, roomShape, placedItems, openings, budget, northDeg, timeOfDay })
       );
     } catch {
       // 保存に失敗しても致命的ではないので無視
     }
-  }, [roomSize, roomShape, placedItems, openings, budget, loaded]);
+  }, [roomSize, roomShape, placedItems, openings, budget, northDeg, timeOfDay, loaded]);
 
   // 部屋外の欠け領域（家具を置けない矩形。L字の凹みや取り込んだ多角形の外側）
   const blockedRects = roomBlockedRects(roomShape, roomSize.widthCm, roomSize.depthCm);
@@ -399,6 +406,7 @@ export default function Home() {
                 roomPolygon={roomPolygon}
                 blockedRects={blockedRects}
                 highlightUids={highlightUids}
+                northDeg={northDeg}
                 onMove={handleMove}
                 onRemove={handleRemove}
                 onMoveOpening={handleMoveOpening}
@@ -552,6 +560,12 @@ export default function Home() {
         </div>
         <div className="flex w-full max-w-md flex-col gap-6 lg:w-72">
           <RoomShapePanel shape={roomShape} roomSize={roomSize} onChange={setRoomShape} />
+          <LightingPanel
+            northDeg={northDeg}
+            timeOfDay={timeOfDay}
+            onChangeNorth={setNorthDeg}
+            onChangeTime={setTimeOfDay}
+          />
           <FloorPlanScanPanel roomSize={roomSize} onDetect={setRoomShape} />
           <AutoLayoutPanel onRun={runAutoLayout} />
           <BudgetLayoutPanel budget={budget} roomSize={roomSize} onRun={runAutoLayout} />

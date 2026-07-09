@@ -49,6 +49,8 @@ export default function DataPanel() {
             placedItems: Array.isArray(data.placedItems) ? data.placedItems : [],
             openings: Array.isArray(data.openings) ? data.openings : [],
             budget: typeof data.budget === "number" ? data.budget : 0,
+            northDeg: typeof data.northDeg === "number" ? data.northDeg : 0,
+            timeOfDay: typeof data.timeOfDay === "number" ? data.timeOfDay : 0.5,
           })
         );
         if (data.proposal) {
