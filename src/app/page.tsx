@@ -377,6 +377,7 @@ export default function Home() {
     openings,
     items: placedItems,
     flowPaths,
+    lightGrid,
   });
 
   const sizeInputClass =
