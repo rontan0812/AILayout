@@ -34,6 +34,14 @@ const PLACE_PRIORITY: Record<string, number> = {
 };
 const priorityOf = (t: string) => PLACE_PRIORITY[t] ?? 40;
 
+// 近くに置きたい相手（アフィニティ）。先に置かれるアンカーの種類を優先度順で並べる。
+// 例: チェアはダイニングテーブル（無ければデスク）の隣、ローテーブルはソファの前に寄せる。
+// アンカーは PLACE_PRIORITY が高く先に配置されるため、サテライトはその位置を参照できる。
+const AFFINITY: Record<string, string[]> = {
+  チェア: ["ダイニングテーブル", "デスク"],
+  ローテーブル: ["ソファ"],
+};
+
 function rectsOverlap(a: Rect, b: Rect, gap = 0): boolean {
   return !(
     a.xCm + a.widthCm + gap <= b.xCm ||
@@ -103,11 +111,13 @@ export function autoLayout(params: {
     .map((o) => openingFrontRect(o, W, D, WINDOW_FRONT_CM));
 
   // 既に置かれている家具（所有品）は避ける。生成物もここに足していく。
-  const occupied: Rect[] = ownedItems.map((o) => ({
+  // アフィニティ判定に使うため種類も保持する。
+  const occupied: (Rect & { type: string })[] = ownedItems.map((o) => ({
     xCm: o.xCm,
     yCm: o.yCm,
     widthCm: o.widthCm,
     depthCm: o.depthCm,
+    type: o.type,
   }));
 
   // 個々のインスタンスへ展開し、優先度→大きい順に並べる
@@ -158,6 +168,11 @@ export function autoLayout(params: {
             [inst.d, inst.w],
           ];
 
+    // アフィニティ先（既に置かれたアンカー）を集める。あればそれに寄せて配置する。
+    const affTypes = AFFINITY[inst.type];
+    const anchors = affTypes ? occupied.filter((o) => affTypes.includes(o.type)) : [];
+    const useAffinity = anchors.length > 0;
+
     let best: { x: number; y: number; w: number; d: number; score: number } | null = null;
 
     for (const [iw, id] of orients) {
@@ -190,19 +205,33 @@ export function autoLayout(params: {
           }
           if (blocked) continue;
 
-          // スコア: 壁に近いほど良い＋窓前は避ける
-          const wallDist = Math.min(x, y, W - (x + iw), D - (y + id));
+          // 窓前は避ける（共通ペナルティ）
           let windowPen = 0;
           for (const wf of windowFronts) {
             if (rectsOverlap(rect, wf)) {
               windowPen += 1000;
             }
           }
-          let score = wallDist + windowPen + y * 0.01 + x * 0.001; // 決定的なタイブレーク
+          // スコア（小さいほど良い）:
+          // - アフィニティ先があるサテライト（椅子・ローテーブル）は相手の中心に近いほど良い
+          // - それ以外は壁に近いほど良い
+          const cx = x + iw / 2;
+          const cy = y + id / 2;
+          let score: number;
+          if (useAffinity) {
+            let nearest = Infinity;
+            for (const a of anchors) {
+              const ax = a.xCm + a.widthCm / 2;
+              const ay = a.yCm + a.depthCm / 2;
+              nearest = Math.min(nearest, Math.abs(cx - ax) + Math.abs(cy - ay));
+            }
+            score = nearest + windowPen + y * 0.01 + x * 0.001;
+          } else {
+            const wallDist = Math.min(x, y, W - (x + iw), D - (y + id));
+            score = wallDist + windowPen + y * 0.01 + x * 0.001; // 決定的なタイブレーク
+          }
           if (vary) {
             // 基準コーナーへの寄せ＋微小なゆらぎで別案を作る（壁付けは維持）
-            const cx = x + iw / 2;
-            const cy = y + id / 2;
             const cornerDist = Math.abs(cx - prefCorner[0]) + Math.abs(cy - prefCorner[1]);
             score += cornerDist * 0.05 + rng() * step;
           }
@@ -227,7 +256,13 @@ export function autoLayout(params: {
         owned: false,
       };
       result.push(item);
-      occupied.push({ xCm: item.xCm, yCm: item.yCm, widthCm: item.widthCm, depthCm: item.depthCm });
+      occupied.push({
+        xCm: item.xCm,
+        yCm: item.yCm,
+        widthCm: item.widthCm,
+        depthCm: item.depthCm,
+        type: item.type,
+      });
     } else {
       unplacedMap.set(inst.type, (unplacedMap.get(inst.type) ?? 0) + 1);
     }
