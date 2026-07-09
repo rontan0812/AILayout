@@ -16,6 +16,7 @@ import CollapsibleSection from "@/components/CollapsibleSection";
 import LightingPanel from "@/components/LightingPanel";
 import LightFixturePanel from "@/components/LightFixturePanel";
 import SharePanel from "@/components/SharePanel";
+import ShareBanner from "@/components/ShareBanner";
 import { useSharedRoom, type RoomDoc } from "@/components/useSharedRoom";
 import {
   DEFAULT_NORTH_DEG,
@@ -517,6 +518,7 @@ export default function Home() {
   return (
     <main className="flex min-h-screen flex-col items-center gap-6 bg-stone-100 p-4 sm:p-8">
       <h1 className="text-xl font-bold text-stone-800 sm:text-2xl">家具配置シミュレーター</h1>
+      <ShareBanner share={share} />
       <div className="flex w-full max-w-5xl flex-col items-center gap-8 lg:flex-row lg:items-start lg:justify-center">
         <div className="flex w-full max-w-[700px] flex-col items-center gap-6">
           <RoomSizeForm value={roomSize} onChange={setRoomSize} />
