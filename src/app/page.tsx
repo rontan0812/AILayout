@@ -10,6 +10,7 @@ import DataPanel from "@/components/DataPanel";
 import RoomShapePanel from "@/components/RoomShapePanel";
 import FloorPlanScanPanel from "@/components/FloorPlanScanPanel";
 import AutoLayoutPanel from "@/components/AutoLayoutPanel";
+import BudgetLayoutPanel from "@/components/BudgetLayoutPanel";
 import { autoLayout, type LayoutRequest } from "@/components/autoLayout";
 import {
   DEFAULT_ROOM_SHAPE,
@@ -482,6 +483,7 @@ export default function Home() {
           <RoomShapePanel shape={roomShape} roomSize={roomSize} onChange={setRoomShape} />
           <FloorPlanScanPanel roomSize={roomSize} onDetect={setRoomShape} />
           <AutoLayoutPanel onRun={runAutoLayout} />
+          <BudgetLayoutPanel budget={budget} roomSize={roomSize} onRun={runAutoLayout} />
           <FurniturePresetPanel onPlace={handlePlacePreset} />
           <OpeningPanel
             openings={openings}
