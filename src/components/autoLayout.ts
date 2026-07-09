@@ -43,6 +43,18 @@ function rectsOverlap(a: Rect, b: Rect, gap = 0): boolean {
   );
 }
 
+// 決定的な擬似乱数（別案生成のばらつき用）
+function mulberry32(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a |= 0;
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 function genId(): string {
   try {
     if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
@@ -61,9 +73,21 @@ export function autoLayout(params: {
   ownedItems: PlacedItem[];
   requests: LayoutRequest[];
   gapCm?: number;
+  seed?: number; // >0で別案（配置のばらつき）を生成する
 }): AutoLayoutResult {
   const { roomW: W, roomD: D, polygon, blockedRects, openings, ownedItems } = params;
   const gap = params.gapCm ?? 6;
+  const seed = params.seed ?? 0;
+  const vary = seed > 0;
+  const rng = mulberry32(seed);
+  // 別案ごとに家具を寄せる基準コーナーを変える
+  const corners: [number, number][] = [
+    [0, 0],
+    [W, 0],
+    [W, D],
+    [0, D],
+  ];
+  const prefCorner = corners[seed % 4];
 
   if (!(W > 0) || !(D > 0)) {
     return { items: [], unplaced: params.requests.map((r) => ({ type: r.type, count: r.count })) };
@@ -174,7 +198,14 @@ export function autoLayout(params: {
               windowPen += 1000;
             }
           }
-          const score = wallDist + windowPen + y * 0.01 + x * 0.001; // 決定的なタイブレーク
+          let score = wallDist + windowPen + y * 0.01 + x * 0.001; // 決定的なタイブレーク
+          if (vary) {
+            // 基準コーナーへの寄せ＋微小なゆらぎで別案を作る（壁付けは維持）
+            const cx = x + iw / 2;
+            const cy = y + id / 2;
+            const cornerDist = Math.abs(cx - prefCorner[0]) + Math.abs(cy - prefCorner[1]);
+            score += cornerDist * 0.05 + rng() * step;
+          }
           if (!best || score < best.score) {
             best = { x, y, w: iw, d: id, score };
           }

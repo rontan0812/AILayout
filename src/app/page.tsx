@@ -94,6 +94,9 @@ export default function Home() {
   const [viewMode, setViewMode] = useState<"2d" | "3d">("2d");
   // 自動レイアウトの結果メッセージ（置ききれなかった等）
   const [layoutNote, setLayoutNote] = useState("");
+  // 直近の自動レイアウト要求（別案生成に使う）と別案シード
+  const [lastRequests, setLastRequests] = useState<LayoutRequest[] | null>(null);
+  const [rerollSeed, setRerollSeed] = useState(0);
   // localStorage 読み込み完了フラグ（読み込み前の初期値で保存して上書きしないため）
   const [loaded, setLoaded] = useState(false);
 
@@ -135,7 +138,7 @@ export default function Home() {
   const blockedRects = roomBlockedRects(roomShape, roomSize.widthCm, roomSize.depthCm);
 
   // 家具リストから自動レイアウトを生成し、非所有の家具枠を置き換える。
-  const runAutoLayout = (requests: LayoutRequest[]) => {
+  const applyAutoLayout = (requests: LayoutRequest[], seed: number) => {
     const owned = placedItems.filter((i) => i.owned);
     const polygon = computeRoomPolygon(roomShape, roomSize.widthCm, roomSize.depthCm);
     const res = autoLayout({
@@ -146,6 +149,7 @@ export default function Home() {
       openings,
       ownedItems: owned,
       requests,
+      seed,
     });
     setPlacedItems([...owned, ...res.items]);
     if (res.unplaced.length > 0) {
@@ -154,6 +158,26 @@ export default function Home() {
     } else {
       setLayoutNote("");
     }
+  };
+
+  const runAutoLayout = (requests: LayoutRequest[]) => {
+    setLastRequests(requests);
+    setRerollSeed(0);
+    applyAutoLayout(requests, 0);
+  };
+
+  // 同じ家具リストで別の配置案を生成する
+  const handleReroll = () => {
+    if (!lastRequests) return;
+    const seed = rerollSeed + 1;
+    setRerollSeed(seed);
+    applyAutoLayout(lastRequests, seed);
+  };
+
+  // 自動配置した家具枠（非所有）を消す
+  const handleClearLayout = () => {
+    setPlacedItems((prev) => prev.filter((i) => i.owned));
+    setLayoutNote("");
   };
 
   const handlePlacePreset = (preset: FurniturePreset, owned: boolean) => {
@@ -362,6 +386,26 @@ export default function Home() {
                 onRemove={handleRemove}
                 onMoveOpening={handleMoveOpening}
               />
+              {(lastRequests || placedItems.some((i) => !i.owned)) && (
+                <div className="flex w-full flex-wrap items-center gap-2">
+                  {lastRequests && (
+                    <button
+                      type="button"
+                      onClick={handleReroll}
+                      className="rounded-md border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-sm text-emerald-700 hover:bg-emerald-100"
+                    >
+                      🔀 別の配置案
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={handleClearLayout}
+                    className="rounded-md border border-stone-300 bg-white px-3 py-1.5 text-sm text-stone-600 hover:bg-stone-100"
+                  >
+                    配置をクリア
+                  </button>
+                </div>
+              )}
               {layoutNote && (
                 <div className="w-full rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
                   {layoutNote}
