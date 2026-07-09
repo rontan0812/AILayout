@@ -13,7 +13,13 @@ import AutoLayoutPanel from "@/components/AutoLayoutPanel";
 import BudgetLayoutPanel from "@/components/BudgetLayoutPanel";
 import ScorePanel from "@/components/ScorePanel";
 import LightingPanel from "@/components/LightingPanel";
-import { DEFAULT_NORTH_DEG, DEFAULT_TIME, computeLightGrid } from "@/components/lighting";
+import LightFixturePanel from "@/components/LightFixturePanel";
+import {
+  DEFAULT_NORTH_DEG,
+  DEFAULT_TIME,
+  computeLightGrid,
+  type Light,
+} from "@/components/lighting";
 import { autoLayout, type LayoutRequest } from "@/components/autoLayout";
 import { scoreLayout } from "@/components/layoutScore";
 import {
@@ -100,6 +106,7 @@ export default function Home() {
   const [northDeg, setNorthDeg] = useState(DEFAULT_NORTH_DEG);
   const [timeOfDay, setTimeOfDay] = useState(DEFAULT_TIME);
   const [showLight, setShowLight] = useState(false);
+  const [lights, setLights] = useState<Light[]>([]);
   // 自動レイアウトの結果メッセージ（置ききれなかった等）
   const [layoutNote, setLayoutNote] = useState("");
   // 直近の自動レイアウト要求（別案生成に使う）と別案シード
@@ -126,6 +133,7 @@ export default function Home() {
         if (typeof saved.budget === "number") setBudget(saved.budget);
         if (typeof saved.northDeg === "number") setNorthDeg(saved.northDeg);
         if (typeof saved.timeOfDay === "number") setTimeOfDay(saved.timeOfDay);
+        if (Array.isArray(saved.lights)) setLights(saved.lights);
       }
     } catch {
       // 壊れたデータは無視して初期状態で始める
@@ -140,12 +148,21 @@ export default function Home() {
     try {
       localStorage.setItem(
         STORAGE_KEY,
-        JSON.stringify({ roomSize, roomShape, placedItems, openings, budget, northDeg, timeOfDay })
+        JSON.stringify({
+          roomSize,
+          roomShape,
+          placedItems,
+          openings,
+          budget,
+          northDeg,
+          timeOfDay,
+          lights,
+        })
       );
     } catch {
       // 保存に失敗しても致命的ではないので無視
     }
-  }, [roomSize, roomShape, placedItems, openings, budget, northDeg, timeOfDay, loaded]);
+  }, [roomSize, roomShape, placedItems, openings, budget, northDeg, timeOfDay, lights, loaded]);
 
   // 部屋外の欠け領域（家具を置けない矩形。L字の凹みや取り込んだ多角形の外側）
   const blockedRects = roomBlockedRects(roomShape, roomSize.widthCm, roomSize.depthCm);
@@ -268,6 +285,22 @@ export default function Home() {
     setOpenings((prev) => prev.filter((o) => o.id !== id));
   };
 
+  const handleAddLight = (kind: Light["kind"]) => {
+    // 中央付近に少しずらして追加（重ならないように）
+    const n = lights.length;
+    const x = Math.min(roomSize.widthCm - 10, roomSize.widthCm / 2 + (n % 3) * 30);
+    const y = Math.min(roomSize.depthCm - 10, roomSize.depthCm / 2 + (n % 2) * 30);
+    setLights((prev) => [...prev, { id: crypto.randomUUID(), kind, xCm: x, yCm: y }]);
+  };
+
+  const handleMoveLight = (id: string, xCm: number, yCm: number) => {
+    setLights((prev) => prev.map((l) => (l.id === id ? { ...l, xCm, yCm } : l)));
+  };
+
+  const handleRemoveLight = (id: string) => {
+    setLights((prev) => prev.filter((l) => l.id !== id));
+  };
+
   const handleMoveOpening = (id: string, offsetCm: number) => {
     setOpenings((prev) =>
       prev.map((o) => {
@@ -332,6 +365,7 @@ export default function Home() {
     items: placedItems,
     northDeg,
     timeOfDay,
+    lights,
   });
 
   // 現在の配置の採点（重なり・動線・窓塞ぎ等の減点）
@@ -422,9 +456,12 @@ export default function Home() {
                 northDeg={northDeg}
                 lightGrid={lightGrid}
                 showLight={showLight}
+                lights={lights}
                 onMove={handleMove}
                 onRemove={handleRemove}
                 onMoveOpening={handleMoveOpening}
+                onMoveLight={handleMoveLight}
+                onRemoveLight={handleRemoveLight}
               />
               {(lastRequests || placedItems.some((i) => !i.owned)) && (
                 <div className="flex w-full flex-wrap items-center gap-2">
@@ -603,6 +640,11 @@ export default function Home() {
             roomSize={roomSize}
             onAdd={handleAddOpening}
             onRemove={handleRemoveOpening}
+          />
+          <LightFixturePanel
+            lights={lights}
+            onAdd={handleAddLight}
+            onRemove={handleRemoveLight}
           />
           <DataPanel />
         </div>

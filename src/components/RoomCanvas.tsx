@@ -6,7 +6,7 @@ import type Konva from "konva";
 import { FURNITURE_PALETTE } from "./furniturePalette";
 import { doorClearanceRects } from "./clearance";
 import type { FlowPath } from "./flowline";
-import { lightColor, type LightGrid } from "./lighting";
+import { lightColor, type LightGrid, type Light } from "./lighting";
 
 const MAX_WIDTH = 700;
 const ASPECT = 500 / 700; // 高さ / 幅
@@ -50,9 +50,13 @@ type RoomCanvasProps = {
   // 採光マップ（ヒートマップ表示用）と表示フラグ
   lightGrid?: LightGrid | null;
   showLight?: boolean;
+  // 部屋の照明（ドラッグで移動、ダブルクリックで削除）
+  lights?: Light[];
   onMove: (uid: string, xCm: number, yCm: number) => void;
   onRemove: (uid: string) => void;
   onMoveOpening: (id: string, offsetCm: number) => void;
+  onMoveLight?: (id: string, xCm: number, yCm: number) => void;
+  onRemoveLight?: (id: string) => void;
 };
 
 export default function RoomCanvas({
@@ -67,9 +71,12 @@ export default function RoomCanvas({
   northDeg = 0,
   lightGrid,
   showLight = false,
+  lights,
   onMove,
   onRemove,
   onMoveOpening,
+  onMoveLight,
+  onRemoveLight,
 }: RoomCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [stageWidth, setStageWidth] = useState(MAX_WIDTH);
@@ -447,6 +454,57 @@ export default function RoomCanvas({
                         y={roomY + b.yCm * scale}
                         radius={5}
                         fill="#059669"
+                      />
+                    </Group>
+                  );
+                })}
+
+                {/* 部屋の照明（ドラッグで移動、ダブルクリックで削除） */}
+                {(lights ?? []).map((lm) => {
+                  const isCeiling = lm.kind === "ceiling";
+                  const cxp = roomX + Math.min(Math.max(lm.xCm, 0), widthCm) * scale;
+                  const cyp = roomY + Math.min(Math.max(lm.yCm, 0), depthCm) * scale;
+                  return (
+                    <Group
+                      key={lm.id}
+                      x={cxp}
+                      y={cyp}
+                      draggable
+                      dragBoundFunc={(pos) => {
+                        const nx = Math.min(Math.max(pos.x, roomX), roomX + roomWidth);
+                        const ny = Math.min(Math.max(pos.y, roomY), roomY + roomDepth);
+                        return { x: nx, y: ny };
+                      }}
+                      onDragEnd={(e: Konva.KonvaEventObject<DragEvent>) => {
+                        const node = e.target;
+                        onMoveLight?.(
+                          lm.id,
+                          (node.x() - roomX) / scale,
+                          (node.y() - roomY) / scale
+                        );
+                      }}
+                      onDblClick={() => onRemoveLight?.(lm.id)}
+                      onDblTap={() => onRemoveLight?.(lm.id)}
+                    >
+                      <Circle
+                        radius={11}
+                        fill={isCeiling ? "#fde047" : "#fdba74"}
+                        stroke={isCeiling ? "#ca8a04" : "#ea580c"}
+                        strokeWidth={2}
+                        shadowColor={isCeiling ? "#facc15" : "#fb923c"}
+                        shadowBlur={12}
+                        shadowOpacity={0.8}
+                      />
+                      <Text
+                        text={isCeiling ? "☀" : "💡"}
+                        width={22}
+                        height={22}
+                        offsetX={11}
+                        offsetY={11}
+                        align="center"
+                        verticalAlign="middle"
+                        fontSize={12}
+                        listening={false}
                       />
                     </Group>
                   );

@@ -51,6 +51,7 @@ export default function DataPanel() {
             budget: typeof data.budget === "number" ? data.budget : 0,
             northDeg: typeof data.northDeg === "number" ? data.northDeg : 0,
             timeOfDay: typeof data.timeOfDay === "number" ? data.timeOfDay : 0.5,
+            lights: Array.isArray(data.lights) ? data.lights : [],
           })
         );
         if (data.proposal) {
