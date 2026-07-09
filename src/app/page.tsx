@@ -249,6 +249,19 @@ export default function Home() {
     setPlacedItems((prev) => prev.filter((i) => i.uid !== uid));
   };
 
+  // 家具を複製して少しずらして置く
+  const handleDuplicate = (uid: string) => {
+    setPlacedItems((prev) => {
+      const src = prev.find((i) => i.uid === uid);
+      if (!src) return prev;
+      const num = prev.filter((i) => i.type === src.type).length + 1;
+      const offset = 20;
+      const x = Math.min(src.xCm + offset, Math.max(0, roomSize.widthCm - src.widthCm));
+      const y = Math.min(src.yCm + offset, Math.max(0, roomSize.depthCm - src.depthCm));
+      return [...prev, { ...src, uid: crypto.randomUUID(), num, xCm: x, yCm: y }];
+    });
+  };
+
   const handleResize = (
     uid: string,
     key: "widthCm" | "depthCm",
@@ -461,6 +474,8 @@ export default function Home() {
                 lights={lights}
                 onMove={handleMove}
                 onRemove={handleRemove}
+                onRotate={handleRotate}
+                onDuplicate={handleDuplicate}
                 onMoveOpening={handleMoveOpening}
                 onMoveLight={handleMoveLight}
                 onRemoveLight={handleRemoveLight}
