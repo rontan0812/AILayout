@@ -10,6 +10,8 @@ type RakutenItem = {
   itemUrl: string;
   itemCaption: string;
   mediumImageUrls: string[];
+  reviewCount: number;
+  reviewAverage: number;
 };
 
 export type FurnitureItem = {
@@ -20,6 +22,8 @@ export type FurnitureItem = {
   imageUrl: string | null;
   widthCm: number | null;
   depthCm: number | null;
+  reviewCount: number; // レビュー件数
+  reviewAverage: number; // 評価平均（0〜5）
 };
 
 // 単位付きの数値を cm に換算する（mm 表記のみ 1/10）。現実的な家具サイズの範囲外は無視。
@@ -127,6 +131,8 @@ export async function GET(request: Request) {
         imageUrl: item.mediumImageUrls?.[0] ?? null,
         widthCm,
         depthCm,
+        reviewCount: typeof item.reviewCount === "number" ? item.reviewCount : 0,
+        reviewAverage: typeof item.reviewAverage === "number" ? item.reviewAverage : 0,
       };
     });
 
