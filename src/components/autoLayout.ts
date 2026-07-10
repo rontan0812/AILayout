@@ -20,12 +20,14 @@ export type AutoLayoutResult = {
 };
 
 // 種類ごとの壁付け優先度（大きい＝先に壁沿いへ配置）。未知は既定値。
+// アフィニティ/対面の相手（アンカー）は必ずサテライトより先に置かれるよう優先度を高くする。
+// 例: デスク(70) は本棚(68) より先。ソファ(90) はテレビ台(65) より先。
 const PLACE_PRIORITY: Record<string, number> = {
   ベッド: 100,
   ソファ: 90,
   ワードローブ: 88,
-  本棚: 80,
   デスク: 70,
+  本棚: 68,
   テレビ台: 65,
   チェスト: 60,
   ダイニングテーブル: 50,
@@ -34,13 +36,24 @@ const PLACE_PRIORITY: Record<string, number> = {
 };
 const priorityOf = (t: string) => PLACE_PRIORITY[t] ?? 40;
 
-// 近くに置きたい相手（アフィニティ）。先に置かれるアンカーの種類を優先度順で並べる。
-// 例: チェアはダイニングテーブル（無ければデスク）の隣、ローテーブルはソファの前に寄せる。
-// アンカーは PLACE_PRIORITY が高く先に配置されるため、サテライトはその位置を参照できる。
-const AFFINITY: Record<string, string[]> = {
+// 強アフィニティ: 壁付けより「相手の隣」を優先する（相手中心への距離でスコア）。
+const HARD_AFFINITY: Record<string, string[]> = {
   チェア: ["ダイニングテーブル", "デスク"],
   ローテーブル: ["ソファ"],
 };
+// 弱アフィニティ: 壁付けは保ちつつ、相手に近い壁位置を優先する。
+const SOFT_AFFINITY: Record<string, string[]> = {
+  本棚: ["デスク"],
+  チェスト: ["ベッド"],
+};
+// 対面: 相手（ソファ）の反対側の壁に、相手の中心軸へ揃えて置く。
+const FACING: Record<string, string> = {
+  テレビ台: "ソファ",
+};
+// 弱アフィニティで相手へ寄せる強さ（壁付けを崩さない程度）
+const SOFT_AFFINITY_WEIGHT = 0.4;
+// 部屋全体を使うための分散の強さ（壁沿いの中で既存家具から離れた位置を優先）
+const SPREAD_WEIGHT = 40;
 
 function rectsOverlap(a: Rect, b: Rect, gap = 0): boolean {
   return !(
@@ -120,13 +133,49 @@ export function autoLayout(params: {
     type: o.type,
   }));
 
-  // 個々のインスタンスへ展開し、優先度→大きい順に並べる
-  const instances: { type: string; w: number; d: number }[] = [];
+  // 個々のインスタンスへ展開し、優先度→大きい順に並べる。
+  // affinity/facing は種類の既定から決めるが、個別に上書きできる（椅子のデスク割当など）。
+  type Instance = {
+    type: string;
+    w: number;
+    d: number;
+    hardAff?: string[]; // 強アフィニティ（相手の隣）
+    softAff?: string[]; // 弱アフィニティ（相手に近い壁）
+    facing?: string; // 対面（相手の反対壁）
+  };
+  const instances: Instance[] = [];
   for (const r of params.requests) {
     for (let i = 0; i < r.count; i++) {
-      instances.push({ type: r.type, w: r.widthCm, d: r.depthCm });
+      instances.push({
+        type: r.type,
+        w: r.widthCm,
+        d: r.depthCm,
+        hardAff: HARD_AFFINITY[r.type],
+        softAff: SOFT_AFFINITY[r.type],
+        facing: FACING[r.type],
+      });
     }
   }
+
+  // チェア割当: デスクがある場合、椅子を1脚だけデスク用に確保する
+  // （残りはダイニングテーブル優先）。
+  const hasDesk =
+    params.requests.some((r) => r.type === "デスク") ||
+    ownedItems.some((o) => o.type === "デスク");
+  const hasTable =
+    params.requests.some((r) => r.type === "ダイニングテーブル") ||
+    ownedItems.some((o) => o.type === "ダイニングテーブル");
+  if (hasDesk) {
+    const deskChair = instances.find((i) => i.type === "チェア");
+    if (deskChair) deskChair.hardAff = ["デスク"];
+    // ダイニングテーブルがあるなら、残りの椅子はテーブルのみを相手にする
+    if (hasTable) {
+      for (const i of instances) {
+        if (i.type === "チェア" && i !== deskChair) i.hardAff = ["ダイニングテーブル"];
+      }
+    }
+  }
+
   instances.sort((a, b) => {
     const p = priorityOf(b.type) - priorityOf(a.type);
     if (p !== 0) return p;
@@ -168,10 +217,41 @@ export function autoLayout(params: {
             [inst.d, inst.w],
           ];
 
-    // アフィニティ先（既に置かれたアンカー）を集める。あればそれに寄せて配置する。
-    const affTypes = AFFINITY[inst.type];
-    const anchors = affTypes ? occupied.filter((o) => affTypes.includes(o.type)) : [];
-    const useAffinity = anchors.length > 0;
+    // 配置モードを決める（優先: 強アフィニティ > 対面 > 弱アフィニティ > 分散）。
+    // 相手がまだ置かれていない場合は壁沿い＋分散にフォールバックする。
+    const hardAnchors = inst.hardAff
+      ? occupied.filter((o) => inst.hardAff!.includes(o.type))
+      : [];
+    const softAnchors = inst.softAff
+      ? occupied.filter((o) => inst.softAff!.includes(o.type))
+      : [];
+    const facingAnchor = inst.facing
+      ? occupied.find((o) => o.type === inst.facing) ?? null
+      : null;
+
+    const useHard = hardAnchors.length > 0;
+    const useFacing = !useHard && facingAnchor !== null;
+    const useSoft = !useHard && !useFacing && softAnchors.length > 0;
+
+    // 対面の相手（ソファ等）が接している壁から、置くべき反対壁と揃える中心軸を求める
+    let facingWall: "top" | "bottom" | "left" | "right" | null = null;
+    let facingAlign = 0;
+    if (useFacing && facingAnchor) {
+      const s = facingAnchor;
+      const scx = s.xCm + s.widthCm / 2;
+      const scy = s.yCm + s.depthCm / 2;
+      // ソファは長辺が沿う壁を背にする、と判定する（隅でも安定する）。
+      // 長辺が水平→上下壁を背に、垂直→左右壁を背に。近い方の壁を背とし、TVは反対壁へ。
+      if (s.widthCm >= s.depthCm) {
+        const backTop = s.yCm <= D - (s.yCm + s.depthCm);
+        facingWall = backTop ? "bottom" : "top";
+        facingAlign = scx;
+      } else {
+        const backLeft = s.xCm <= W - (s.xCm + s.widthCm);
+        facingWall = backLeft ? "right" : "left";
+        facingAlign = scy;
+      }
+    }
 
     let best: { x: number; y: number; w: number; d: number; score: number } | null = null;
 
@@ -212,23 +292,64 @@ export function autoLayout(params: {
               windowPen += 1000;
             }
           }
-          // スコア（小さいほど良い）:
-          // - アフィニティ先があるサテライト（椅子・ローテーブル）は相手の中心に近いほど良い
-          // - それ以外は壁に近いほど良い
+          // スコア（小さいほど良い）。モード別:
+          // - 強アフィニティ: 相手の中心に近いほど良い（壁は不問）
+          // - 対面: 相手の反対壁に接し、相手の中心軸に揃うほど良い
+          // - 弱アフィニティ: 壁沿い＋相手に近いほど良い
+          // - 分散(プレーン): 壁沿い＋既存家具から遠いほど良い（部屋全体を使う）
           const cx = x + iw / 2;
           const cy = y + id / 2;
+          const tieBreak = y * 0.01 + x * 0.001;
           let score: number;
-          if (useAffinity) {
+          if (useHard) {
             let nearest = Infinity;
-            for (const a of anchors) {
+            for (const a of hardAnchors) {
               const ax = a.xCm + a.widthCm / 2;
               const ay = a.yCm + a.depthCm / 2;
               nearest = Math.min(nearest, Math.abs(cx - ax) + Math.abs(cy - ay));
             }
-            score = nearest + windowPen + y * 0.01 + x * 0.001;
+            score = nearest + windowPen + tieBreak;
+          } else if (useFacing) {
+            let tx: number;
+            let ty: number;
+            if (facingWall === "bottom") {
+              tx = facingAlign;
+              ty = D - id / 2;
+            } else if (facingWall === "top") {
+              tx = facingAlign;
+              ty = id / 2;
+            } else if (facingWall === "right") {
+              tx = W - iw / 2;
+              ty = facingAlign;
+            } else {
+              tx = iw / 2;
+              ty = facingAlign;
+            }
+            score = Math.abs(cx - tx) + Math.abs(cy - ty) + windowPen + tieBreak;
+          } else if (useSoft) {
+            const wallDist = Math.min(x, y, W - (x + iw), D - (y + id));
+            let nearest = Infinity;
+            for (const a of softAnchors) {
+              const ax = a.xCm + a.widthCm / 2;
+              const ay = a.yCm + a.depthCm / 2;
+              nearest = Math.min(nearest, Math.abs(cx - ax) + Math.abs(cy - ay));
+            }
+            score = wallDist + windowPen + SOFT_AFFINITY_WEIGHT * nearest + tieBreak;
           } else {
             const wallDist = Math.min(x, y, W - (x + iw), D - (y + id));
-            score = wallDist + windowPen + y * 0.01 + x * 0.001; // 決定的なタイブレーク
+            // 既存家具から遠いほど良い（分散して部屋全体を使う）
+            let spread = 0;
+            if (occupied.length > 0) {
+              let nearest = Infinity;
+              for (const o of occupied) {
+                const ax = o.xCm + o.widthCm / 2;
+                const ay = o.yCm + o.depthCm / 2;
+                nearest = Math.min(nearest, Math.abs(cx - ax) + Math.abs(cy - ay));
+              }
+              const diag = W + D;
+              spread = SPREAD_WEIGHT * (1 - Math.min(nearest, diag) / diag);
+            }
+            score = wallDist + windowPen + spread + tieBreak;
           }
           if (vary) {
             // 基準コーナーへの寄せ＋微小なゆらぎで別案を作る（壁付けは維持）
