@@ -54,6 +54,15 @@ const FACING: Record<string, string> = {
 const SOFT_AFFINITY_WEIGHT = 0.4;
 // 部屋全体を使うための分散の強さ（壁沿いの中で既存家具から離れた位置を優先）
 const SPREAD_WEIGHT = 40;
+// ドアから室内へ延びる通路帯の深さ（cm）。ハードなクリアランス(60cm)より奥まで、
+// 家具が掛からないよう「導線」を確保する（掛かってもソフトに避けるだけで禁止しない）。
+const DOOR_LANE_CM = 140;
+// 導線帯に掛かるときのソフトペナルティ（窓塞ぎ1000より軽い）
+const DOOR_LANE_PENALTY = 300;
+// ドアから遠い壁へ寄せたい種類（就寝スペースは入口から離す）
+const DOOR_AVERSE = new Set<string>(["ベッド"]);
+// ドア回避の強さ（壁付けの中で入口から遠い位置を優先）
+const DOOR_AVERSE_WEIGHT = 120;
 
 function rectsOverlap(a: Rect, b: Rect, gap = 0): boolean {
   return !(
@@ -122,6 +131,18 @@ export function autoLayout(params: {
   const windowFronts: Rect[] = openings
     .filter((o) => o.kind === "window")
     .map((o) => openingFrontRect(o, W, D, WINDOW_FRONT_CM));
+
+  // ドア前の導線帯（ソフト回避）と、ドア回避用のドア中心点
+  const doors = openings.filter((o) => o.kind === "door");
+  const doorLanes: Rect[] = doors.map((o) => openingFrontRect(o, W, D, DOOR_LANE_CM));
+  const doorPoints: { x: number; y: number }[] = doors.map((o) => {
+    const wallLen = o.wall === "top" || o.wall === "bottom" ? W : D;
+    const c = Math.min(Math.max(o.offsetCm, o.widthCm / 2), wallLen - o.widthCm / 2);
+    if (o.wall === "top") return { x: c, y: 0 };
+    if (o.wall === "bottom") return { x: c, y: D };
+    if (o.wall === "left") return { x: 0, y: c };
+    return { x: W, y: c };
+  });
 
   // 既に置かれている家具（所有品）は避ける。生成物もここに足していく。
   // アフィニティ判定に使うため種類も保持する。
@@ -285,12 +306,13 @@ export function autoLayout(params: {
           }
           if (blocked) continue;
 
-          // 窓前は避ける（共通ペナルティ）
-          let windowPen = 0;
+          // 共通ペナルティ: 窓前を塞がない＋ドア前の導線を空ける
+          let penalty = 0;
           for (const wf of windowFronts) {
-            if (rectsOverlap(rect, wf)) {
-              windowPen += 1000;
-            }
+            if (rectsOverlap(rect, wf)) penalty += 1000;
+          }
+          for (const lane of doorLanes) {
+            if (rectsOverlap(rect, lane)) penalty += DOOR_LANE_PENALTY;
           }
           // スコア（小さいほど良い）。モード別:
           // - 強アフィニティ: 相手の中心に近いほど良い（壁は不問）
@@ -308,7 +330,7 @@ export function autoLayout(params: {
               const ay = a.yCm + a.depthCm / 2;
               nearest = Math.min(nearest, Math.abs(cx - ax) + Math.abs(cy - ay));
             }
-            score = nearest + windowPen + tieBreak;
+            score = nearest + penalty + tieBreak;
           } else if (useFacing) {
             let tx: number;
             let ty: number;
@@ -325,7 +347,7 @@ export function autoLayout(params: {
               tx = iw / 2;
               ty = facingAlign;
             }
-            score = Math.abs(cx - tx) + Math.abs(cy - ty) + windowPen + tieBreak;
+            score = Math.abs(cx - tx) + Math.abs(cy - ty) + penalty + tieBreak;
           } else if (useSoft) {
             const wallDist = Math.min(x, y, W - (x + iw), D - (y + id));
             let nearest = Infinity;
@@ -334,7 +356,7 @@ export function autoLayout(params: {
               const ay = a.yCm + a.depthCm / 2;
               nearest = Math.min(nearest, Math.abs(cx - ax) + Math.abs(cy - ay));
             }
-            score = wallDist + windowPen + SOFT_AFFINITY_WEIGHT * nearest + tieBreak;
+            score = wallDist + penalty + SOFT_AFFINITY_WEIGHT * nearest + tieBreak;
           } else {
             const wallDist = Math.min(x, y, W - (x + iw), D - (y + id));
             // 既存家具から遠いほど良い（分散して部屋全体を使う）
@@ -349,7 +371,17 @@ export function autoLayout(params: {
               const diag = W + D;
               spread = SPREAD_WEIGHT * (1 - Math.min(nearest, diag) / diag);
             }
-            score = wallDist + windowPen + spread + tieBreak;
+            // ドア回避: ベッド等は入口から遠い壁ほど良い
+            let doorAverse = 0;
+            if (DOOR_AVERSE.has(inst.type) && doorPoints.length > 0) {
+              let nearest = Infinity;
+              for (const dp of doorPoints) {
+                nearest = Math.min(nearest, Math.abs(cx - dp.x) + Math.abs(cy - dp.y));
+              }
+              const diag = W + D;
+              doorAverse = DOOR_AVERSE_WEIGHT * (1 - Math.min(nearest, diag) / diag);
+            }
+            score = wallDist + penalty + spread + doorAverse + tieBreak;
           }
           if (vary) {
             // 基準コーナーへの寄せ＋微小なゆらぎで別案を作る（壁付けは維持）
