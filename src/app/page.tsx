@@ -519,6 +519,93 @@ export default function Home() {
     <main className="flex min-h-screen flex-col items-center gap-6 bg-stone-100 p-4 sm:p-8">
       <h1 className="text-xl font-bold text-stone-800 sm:text-2xl">家具配置シミュレーター</h1>
       <ShareBanner share={share} />
+      {/* レイアウト（キャンバス）は画面上部に固定し、下の操作中も常に見えるようにする */}
+      <div className="sticky top-0 z-20 flex w-full max-w-[700px] flex-col items-center gap-2 border-b border-stone-200 bg-stone-100 pb-2 pt-1">
+        <div className="flex w-full items-center gap-3">
+          <div className="inline-flex overflow-hidden rounded-md border border-stone-300">
+            <button
+              type="button"
+              onClick={() => setViewMode("2d")}
+              className={`px-4 py-1.5 text-sm ${
+                viewMode === "2d"
+                  ? "bg-blue-600 text-white"
+                  : "bg-white text-stone-600 hover:bg-stone-100"
+              }`}
+            >
+              2D
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode("3d")}
+              className={`px-4 py-1.5 text-sm ${
+                viewMode === "3d"
+                  ? "bg-blue-600 text-white"
+                  : "bg-white text-stone-600 hover:bg-stone-100"
+              }`}
+            >
+              3D
+            </button>
+          </div>
+          <span className="hidden text-xs text-stone-500 sm:inline">
+            {viewMode === "2d"
+              ? "真上から編集"
+              : "立体プレビュー（ドラッグで回転・ホイールでズーム）"}
+          </span>
+          <div className="ml-auto inline-flex overflow-hidden rounded-md border border-stone-300">
+            <button
+              type="button"
+              onClick={undo}
+              disabled={!canUndo}
+              aria-label="取り消し"
+              title="取り消し（Ctrl+Z）"
+              className="px-3 py-1.5 text-sm text-stone-600 hover:bg-stone-100 disabled:cursor-not-allowed disabled:text-stone-300"
+            >
+              ↩︎
+            </button>
+            <button
+              type="button"
+              onClick={redo}
+              disabled={!canRedo}
+              aria-label="やり直し"
+              title="やり直し（Ctrl+Shift+Z）"
+              className="border-l border-stone-300 px-3 py-1.5 text-sm text-stone-600 hover:bg-stone-100 disabled:cursor-not-allowed disabled:text-stone-300"
+            >
+              ↪︎
+            </button>
+          </div>
+        </div>
+        {viewMode === "2d" ? (
+          <RoomCanvas
+            widthCm={roomSize.widthCm}
+            depthCm={roomSize.depthCm}
+            placedItems={placedItems}
+            openings={openings}
+            flowPaths={showFlow ? flowPaths : []}
+            roomPolygon={roomPolygon}
+            blockedRects={blockedRects}
+            highlightUids={highlightUids}
+            northDeg={northDeg}
+            lightGrid={lightGrid}
+            showLight={showLight}
+            lights={lights}
+            onMove={handleMove}
+            onRemove={handleRemove}
+            onRotate={handleRotate}
+            onDuplicate={handleDuplicate}
+            onMoveOpening={handleMoveOpening}
+            onMoveLight={handleMoveLight}
+            onRemoveLight={handleRemoveLight}
+          />
+        ) : (
+          <Room3D
+            widthCm={roomSize.widthCm}
+            depthCm={roomSize.depthCm}
+            placedItems={placedItems}
+            openings={openings}
+            roomPolygon={roomPolygon}
+          />
+        )}
+      </div>
       <div className="flex w-full max-w-5xl flex-col items-center gap-8 lg:flex-row lg:items-start lg:justify-center">
         <div className="flex w-full max-w-[700px] flex-col items-center gap-6">
           <RoomSizeForm value={roomSize} onChange={setRoomSize} />
@@ -544,83 +631,8 @@ export default function Home() {
               />
             </div>
           </div>
-          <div className="flex w-full items-center gap-3">
-            <div className="inline-flex overflow-hidden rounded-md border border-stone-300">
-              <button
-                type="button"
-                onClick={() => setViewMode("2d")}
-                className={`px-4 py-1.5 text-sm ${
-                  viewMode === "2d"
-                    ? "bg-blue-600 text-white"
-                    : "bg-white text-stone-600 hover:bg-stone-100"
-                }`}
-              >
-                2D
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewMode("3d")}
-                className={`px-4 py-1.5 text-sm ${
-                  viewMode === "3d"
-                    ? "bg-blue-600 text-white"
-                    : "bg-white text-stone-600 hover:bg-stone-100"
-                }`}
-              >
-                3D
-              </button>
-            </div>
-            <span className="text-xs text-stone-500">
-              {viewMode === "2d"
-                ? "真上から編集"
-                : "立体プレビュー（ドラッグで回転・ホイールでズーム）"}
-            </span>
-            <div className="ml-auto inline-flex overflow-hidden rounded-md border border-stone-300">
-              <button
-                type="button"
-                onClick={undo}
-                disabled={!canUndo}
-                aria-label="取り消し"
-                title="取り消し（Ctrl+Z）"
-                className="px-3 py-1.5 text-sm text-stone-600 hover:bg-stone-100 disabled:cursor-not-allowed disabled:text-stone-300"
-              >
-                ↩︎
-              </button>
-              <button
-                type="button"
-                onClick={redo}
-                disabled={!canRedo}
-                aria-label="やり直し"
-                title="やり直し（Ctrl+Shift+Z）"
-                className="border-l border-stone-300 px-3 py-1.5 text-sm text-stone-600 hover:bg-stone-100 disabled:cursor-not-allowed disabled:text-stone-300"
-              >
-                ↪︎
-              </button>
-            </div>
-          </div>
-
-          {viewMode === "2d" ? (
+          {viewMode === "2d" && (
             <>
-              <RoomCanvas
-                widthCm={roomSize.widthCm}
-                depthCm={roomSize.depthCm}
-                placedItems={placedItems}
-                openings={openings}
-                flowPaths={showFlow ? flowPaths : []}
-                roomPolygon={roomPolygon}
-                blockedRects={blockedRects}
-                highlightUids={highlightUids}
-                northDeg={northDeg}
-                lightGrid={lightGrid}
-                showLight={showLight}
-                lights={lights}
-                onMove={handleMove}
-                onRemove={handleRemove}
-                onRotate={handleRotate}
-                onDuplicate={handleDuplicate}
-                onMoveOpening={handleMoveOpening}
-                onMoveLight={handleMoveLight}
-                onRemoveLight={handleRemoveLight}
-              />
               {placedItems.length === 0 ? (
                 <div className="w-full rounded-lg border border-dashed border-blue-300 bg-blue-50/60 px-4 py-4 text-sm text-stone-700">
                   <p className="mb-1 font-semibold text-blue-800">🛋 まずは家具を置いてみましょう</p>
@@ -694,14 +706,6 @@ export default function Home() {
                 採光マップ（明るさ・影）を表示
               </label>
             </>
-          ) : (
-            <Room3D
-              widthCm={roomSize.widthCm}
-              depthCm={roomSize.depthCm}
-              placedItems={placedItems}
-              openings={openings}
-              roomPolygon={roomPolygon}
-            />
           )}
           {blockedWindowCount > 0 && (
             <div className="w-full rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
