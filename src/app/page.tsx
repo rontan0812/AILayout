@@ -111,6 +111,8 @@ export default function Home() {
   const [budget, setBudget] = useState<number>(0);
   const [showFlow, setShowFlow] = useState(true);
   const [viewMode, setViewMode] = useState<"2d" | "3d">("2d");
+  // 設定ドロワー（サイドバー）の開閉。既定は閉じてコンパクトに。
+  const [menuOpen, setMenuOpen] = useState(false);
   // 方角（上の壁が向く方位）と時間帯
   const [northDeg, setNorthDeg] = useState(DEFAULT_NORTH_DEG);
   const [timeOfDay, setTimeOfDay] = useState(DEFAULT_TIME);
@@ -522,6 +524,15 @@ export default function Home() {
       {/* レイアウト（キャンバス）は画面上部に固定し、下の操作中も常に見えるようにする */}
       <div className="sticky top-0 z-20 flex w-full max-w-[700px] flex-col items-center gap-2 border-b border-stone-200 bg-stone-100 pb-2 pt-1">
         <div className="flex w-full items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setMenuOpen(true)}
+            aria-label="設定を開く"
+            title="部屋・家具・共有などの設定"
+            className="inline-flex items-center gap-1 rounded-md border border-stone-300 bg-white px-3 py-1.5 text-sm text-stone-700 hover:bg-stone-100"
+          >
+            ☰ 設定
+          </button>
           <div className="inline-flex overflow-hidden rounded-md border border-stone-300">
             <button
               type="button"
@@ -606,38 +617,14 @@ export default function Home() {
           />
         )}
       </div>
-      <div className="flex w-full max-w-5xl flex-col items-center gap-8 lg:flex-row lg:items-start lg:justify-center">
-        <div className="flex w-full max-w-[700px] flex-col items-center gap-6">
-          <RoomSizeForm value={roomSize} onChange={setRoomSize} />
-          <div className="flex w-full items-center justify-between rounded-lg border border-stone-200 bg-white px-4 py-3 shadow-sm">
-            <label htmlFor="budget" className="text-sm text-stone-600">
-              全体予算
-            </label>
-            <div className="flex items-center gap-1">
-              <span className="text-stone-500">¥</span>
-              <input
-                id="budget"
-                type="number"
-                min={0}
-                step={1000}
-                value={budget || ""}
-                onChange={(e) =>
-                  setBudget(
-                    Number.isFinite(e.target.valueAsNumber) ? e.target.valueAsNumber : 0
-                  )
-                }
-                placeholder="例: 200000"
-                className="w-36 rounded-md border border-stone-300 px-2 py-1 text-right text-stone-800 focus:border-blue-500 focus:outline-none"
-              />
-            </div>
-          </div>
+      <div className="flex w-full max-w-[700px] flex-col items-center gap-4">
           {viewMode === "2d" && (
             <>
               {placedItems.length === 0 ? (
                 <div className="w-full rounded-lg border border-dashed border-blue-300 bg-blue-50/60 px-4 py-4 text-sm text-stone-700">
                   <p className="mb-1 font-semibold text-blue-800">🛋 まずは家具を置いてみましょう</p>
                   <ul className="ml-1 flex flex-col gap-0.5 text-stone-600">
-                    <li>・右の「家具を置く」で、選んだ家具や予算から自動配置できます</li>
+                    <li>・上の「☰ 設定」→「家具を置く」で、選んだ家具や予算から自動配置できます</li>
                     <li>・パレットから1つずつ置くこともできます</li>
                     <li>・置いた家具はタップで選択→回転・複製・削除、ドラッグで移動</li>
                   </ul>
@@ -677,34 +664,6 @@ export default function Home() {
                   ⚠️ 動線が狭い箇所があります（幅 {FLOW_MIN_WIDTH_CM}cm 未満・赤い区間）。家具の配置を見直すと通りやすくなります。
                 </div>
               )}
-              {flowPaths.length > 0 && (
-                <label className="flex w-full items-center gap-2 rounded-md border border-stone-200 bg-white px-3 py-2 text-sm text-stone-600">
-                  <input
-                    type="checkbox"
-                    checked={showFlow}
-                    onChange={(e) => setShowFlow(e.target.checked)}
-                    className="h-4 w-4"
-                  />
-                  <span
-                    className="inline-block h-1 w-6 shrink-0 rounded"
-                    style={{ background: "#059669" }}
-                  />
-                  生活動線（入口間の通路）を表示
-                </label>
-              )}
-              <label className="flex w-full items-center gap-2 rounded-md border border-stone-200 bg-white px-3 py-2 text-sm text-stone-600">
-                <input
-                  type="checkbox"
-                  checked={showLight}
-                  onChange={(e) => setShowLight(e.target.checked)}
-                  className="h-4 w-4"
-                />
-                <span
-                  className="inline-block h-3 w-6 shrink-0 rounded"
-                  style={{ background: "linear-gradient(90deg, #334155, #f59e0b, #fef3c7)" }}
-                />
-                採光マップ（明るさ・影）を表示
-              </label>
             </>
           )}
           {blockedWindowCount > 0 && (
@@ -798,49 +757,130 @@ export default function Home() {
               </p>
             </div>
           )}
-        </div>
-        <div className="flex w-full max-w-md flex-col gap-3 lg:w-72">
-          <CollapsibleSection title="家具を置く" icon="🛋" defaultOpen>
-            <AutoLayoutPanel onRun={runAutoLayout} />
-            <BudgetLayoutPanel budget={budget} roomSize={roomSize} onRun={runAutoLayout} />
-            <FurniturePresetPanel onPlace={handlePlacePreset} />
-          </CollapsibleSection>
-
-          <CollapsibleSection title="部屋の形・入口" icon="🏠">
-            <RoomShapePanel shape={roomShape} roomSize={roomSize} onChange={setRoomShape} />
-            <OpeningPanel
-              openings={openings}
-              roomSize={roomSize}
-              onAdd={handleAddOpening}
-              onRemove={handleRemoveOpening}
-            />
-            <FloorPlanScanPanel roomSize={roomSize} onDetect={setRoomShape} />
-          </CollapsibleSection>
-
-          <CollapsibleSection title="方角・採光・照明" icon="💡">
-            <LightingPanel
-              northDeg={northDeg}
-              timeOfDay={timeOfDay}
-              onChangeNorth={setNorthDeg}
-              onChangeTime={setTimeOfDay}
-            />
-            <LightFixturePanel
-              lights={lights}
-              onAdd={handleAddLight}
-              onRemove={handleRemoveLight}
-            />
-          </CollapsibleSection>
-
-          <CollapsibleSection title="共有" icon="🔗">
-            <SharePanel share={share} />
-          </CollapsibleSection>
-
-          <CollapsibleSection title="データの保存・読み込み" icon="💾">
-            <DataPanel />
-          </CollapsibleSection>
-        </div>
       </div>
       <ProposalPanel placedItems={placedItems} budget={budget} />
+
+      {/* 設定ドロワー（右からのスライドサイドバー）。設定系はここに集約してコンパクトに */}
+      {menuOpen && (
+        <div
+          className="fixed inset-0 z-30 bg-black/30"
+          onClick={() => setMenuOpen(false)}
+          aria-hidden
+        />
+      )}
+      <aside
+        className={`fixed inset-y-0 right-0 z-40 flex w-[340px] max-w-[88vw] flex-col gap-3 overflow-y-auto bg-stone-100 p-4 shadow-xl transition-transform ${
+          menuOpen ? "translate-x-0" : "translate-x-full"
+        }`}
+      >
+        <div className="flex items-center justify-between">
+          <h2 className="text-base font-bold text-stone-800">設定</h2>
+          <button
+            type="button"
+            onClick={() => setMenuOpen(false)}
+            aria-label="閉じる"
+            className="rounded px-2 py-1 text-lg leading-none text-stone-500 hover:bg-stone-200"
+          >
+            ×
+          </button>
+        </div>
+
+        <CollapsibleSection title="部屋・予算" icon="📐" defaultOpen>
+          <RoomSizeForm value={roomSize} onChange={setRoomSize} />
+          <div className="flex w-full items-center justify-between">
+            <label htmlFor="budget" className="text-sm text-stone-600">
+              全体予算
+            </label>
+            <div className="flex items-center gap-1">
+              <span className="text-stone-500">¥</span>
+              <input
+                id="budget"
+                type="number"
+                min={0}
+                step={1000}
+                value={budget || ""}
+                onChange={(e) =>
+                  setBudget(
+                    Number.isFinite(e.target.valueAsNumber) ? e.target.valueAsNumber : 0
+                  )
+                }
+                placeholder="例: 200000"
+                className="w-32 rounded-md border border-stone-300 px-2 py-1 text-right text-stone-800 focus:border-blue-500 focus:outline-none"
+              />
+            </div>
+          </div>
+        </CollapsibleSection>
+
+        <CollapsibleSection title="家具を置く" icon="🛋" defaultOpen>
+          <AutoLayoutPanel onRun={runAutoLayout} />
+          <BudgetLayoutPanel budget={budget} roomSize={roomSize} onRun={runAutoLayout} />
+          <FurniturePresetPanel onPlace={handlePlacePreset} />
+        </CollapsibleSection>
+
+        <CollapsibleSection title="部屋の形・入口" icon="🏠">
+          <RoomShapePanel shape={roomShape} roomSize={roomSize} onChange={setRoomShape} />
+          <OpeningPanel
+            openings={openings}
+            roomSize={roomSize}
+            onAdd={handleAddOpening}
+            onRemove={handleRemoveOpening}
+          />
+          <FloorPlanScanPanel roomSize={roomSize} onDetect={setRoomShape} />
+        </CollapsibleSection>
+
+        <CollapsibleSection title="方角・採光・照明" icon="💡">
+          <LightingPanel
+            northDeg={northDeg}
+            timeOfDay={timeOfDay}
+            onChangeNorth={setNorthDeg}
+            onChangeTime={setTimeOfDay}
+          />
+          <LightFixturePanel
+            lights={lights}
+            onAdd={handleAddLight}
+            onRemove={handleRemoveLight}
+          />
+        </CollapsibleSection>
+
+        <CollapsibleSection title="表示" icon="👁">
+          {flowPaths.length > 0 && (
+            <label className="flex w-full items-center gap-2 text-sm text-stone-600">
+              <input
+                type="checkbox"
+                checked={showFlow}
+                onChange={(e) => setShowFlow(e.target.checked)}
+                className="h-4 w-4"
+              />
+              <span
+                className="inline-block h-1 w-6 shrink-0 rounded"
+                style={{ background: "#059669" }}
+              />
+              生活動線を表示
+            </label>
+          )}
+          <label className="flex w-full items-center gap-2 text-sm text-stone-600">
+            <input
+              type="checkbox"
+              checked={showLight}
+              onChange={(e) => setShowLight(e.target.checked)}
+              className="h-4 w-4"
+            />
+            <span
+              className="inline-block h-3 w-6 shrink-0 rounded"
+              style={{ background: "linear-gradient(90deg, #334155, #f59e0b, #fef3c7)" }}
+            />
+            採光マップを表示
+          </label>
+        </CollapsibleSection>
+
+        <CollapsibleSection title="共有" icon="🔗">
+          <SharePanel share={share} />
+        </CollapsibleSection>
+
+        <CollapsibleSection title="データの保存・読み込み" icon="💾">
+          <DataPanel />
+        </CollapsibleSection>
+      </aside>
     </main>
   );
 }
