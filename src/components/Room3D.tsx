@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
@@ -365,10 +365,36 @@ function TvStandModel({ w, d, color, op }: ModelProps) {
   );
 }
 
+// 棚口・扉・引き出しなど「前面」を持つ収納家具。広い方の面を正面にしたいので、
+// 常に長辺を正面幅として組み、奥行きが幅より大きい配置のときだけ90°回して向きを合わせる。
+const FRONT_BEARING = new Set(["本棚", "テレビ台", "チェスト", "ワードローブ"]);
+
 // 種類ごとに適切な立体モデルを選ぶ。未登録は従来どおり直方体で描く。
 function FurnitureModel({ it, color, op }: { it: PlacedItem; color: string; op: number }) {
   const w = it.widthCm * M;
   const d = it.depthCm * M;
+
+  // 収納家具は長辺を正面（+z）に固定して組み、footprintに合わせて必要なら90°回す。
+  if (FRONT_BEARING.has(it.type)) {
+    const p = { w: Math.max(w, d), d: Math.min(w, d), color, op };
+    let inner: ReactNode;
+    switch (it.type) {
+      case "テレビ台":
+        inner = <TvStandModel {...p} />;
+        break;
+      case "チェスト":
+        inner = <ChestModel {...p} height={0.8} />;
+        break;
+      case "ワードローブ":
+        inner = <WardrobeModel {...p} height={1.9} />;
+        break;
+      default:
+        inner = <ShelfModel {...p} height={1.6} />;
+        break;
+    }
+    return <group rotation={[0, d > w ? Math.PI / 2 : 0, 0]}>{inner}</group>;
+  }
+
   const p = { w, d, color, op };
   switch (it.type) {
     case "チェア":
@@ -383,14 +409,6 @@ function FurnitureModel({ it, color, op }: { it: PlacedItem; color: string; op: 
       return <DeskModel {...p} topH={0.72} />;
     case "ベッド":
       return <BedModel {...p} />;
-    case "本棚":
-      return <ShelfModel {...p} height={1.6} />;
-    case "テレビ台":
-      return <TvStandModel {...p} />;
-    case "チェスト":
-      return <ChestModel {...p} height={0.8} />;
-    case "ワードローブ":
-      return <WardrobeModel {...p} height={1.9} />;
     default: {
       const h = heightForType(it.type);
       return <Box args={[w, h, d]} pos={[0, h / 2, 0]} color={color} opacity={op} />;
