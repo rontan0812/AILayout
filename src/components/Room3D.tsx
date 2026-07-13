@@ -365,18 +365,52 @@ function TvStandModel({ w, d, color, op }: ModelProps) {
   );
 }
 
-// 棚口・扉・引き出しなど「前面」を持つ収納家具。広い方の面を正面にしたいので、
-// 常に長辺を正面幅として組み、奥行きが幅より大きい配置のときだけ90°回して向きを合わせる。
+// 棚口・扉・引き出しなど「前面」を持つ収納家具。前面が壁を向かないよう、
+// 接している壁を位置から判定し、前面が必ず部屋の内側を向くように据える。
 const FRONT_BEARING = new Set(["本棚", "テレビ台", "チェスト", "ワードローブ"]);
 
+// 家具が最も近い（接している）壁を四隅の余白から判定する。
+function backingWall(
+  it: PlacedItem,
+  roomWcm: number,
+  roomDcm: number
+): "top" | "bottom" | "left" | "right" {
+  const gaps = {
+    top: it.yCm,
+    bottom: roomDcm - (it.yCm + it.depthCm),
+    left: it.xCm,
+    right: roomWcm - (it.xCm + it.widthCm),
+  };
+  let wall: "top" | "bottom" | "left" | "right" = "top";
+  for (const w of ["bottom", "left", "right"] as const) {
+    if (gaps[w] < gaps[wall]) wall = w;
+  }
+  return wall;
+}
+
 // 種類ごとに適切な立体モデルを選ぶ。未登録は従来どおり直方体で描く。
-function FurnitureModel({ it, color, op }: { it: PlacedItem; color: string; op: number }) {
+function FurnitureModel({
+  it,
+  color,
+  op,
+  roomWcm,
+  roomDcm,
+}: {
+  it: PlacedItem;
+  color: string;
+  op: number;
+  roomWcm: number;
+  roomDcm: number;
+}) {
   const w = it.widthCm * M;
   const d = it.depthCm * M;
 
-  // 収納家具は長辺を正面（+z）に固定して組み、footprintに合わせて必要なら90°回す。
+  // 収納家具は前面(+z)を接壁の反対（部屋の内側）へ向ける。
+  // モデルは前面幅=壁と平行な辺、奥行=壁へ突き出す辺として組み、壁ごとに回転させる。
   if (FRONT_BEARING.has(it.type)) {
-    const p = { w: Math.max(w, d), d: Math.min(w, d), color, op };
+    const wall = backingWall(it, roomWcm, roomDcm);
+    const horizontal = wall === "top" || wall === "bottom";
+    const p = { w: horizontal ? w : d, d: horizontal ? d : w, color, op };
     let inner: ReactNode;
     switch (it.type) {
       case "テレビ台":
@@ -392,7 +426,8 @@ function FurnitureModel({ it, color, op }: { it: PlacedItem; color: string; op: 
         inner = <ShelfModel {...p} height={1.6} />;
         break;
     }
-    return <group rotation={[0, d > w ? Math.PI / 2 : 0, 0]}>{inner}</group>;
+    const rotY = { top: 0, bottom: Math.PI, left: Math.PI / 2, right: -Math.PI / 2 }[wall];
+    return <group rotation={[0, rotY, 0]}>{inner}</group>;
   }
 
   const p = { w, d, color, op };
@@ -436,7 +471,7 @@ function Furniture3D({
         const pz = (it.yCm + it.depthCm / 2 - roomDcm / 2) * M;
         return (
           <group key={it.uid} position={[px, 0, pz]}>
-            <FurnitureModel it={it} color={color} op={op} />
+            <FurnitureModel it={it} color={color} op={op} roomWcm={roomWcm} roomDcm={roomDcm} />
           </group>
         );
       })}
