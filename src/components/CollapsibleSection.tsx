@@ -18,7 +18,7 @@ export default function CollapsibleSection({
 }: CollapsibleSectionProps) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <div className="w-full overflow-hidden rounded-lg border border-stone-200 bg-white">
+    <div className="w-full shrink-0 overflow-hidden rounded-lg border border-stone-200 bg-white">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}

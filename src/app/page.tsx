@@ -769,11 +769,11 @@ export default function Home() {
         />
       )}
       <aside
-        className={`fixed inset-y-0 right-0 z-40 flex w-[340px] max-w-[88vw] flex-col gap-3 overflow-y-auto bg-stone-100 p-4 shadow-xl transition-transform ${
+        className={`fixed top-0 right-0 z-40 flex h-dvh w-[340px] max-w-[88vw] flex-col gap-3 overflow-y-auto overscroll-contain bg-stone-100 p-4 shadow-xl transition-transform ${
           menuOpen ? "translate-x-0" : "translate-x-full"
         }`}
       >
-        <div className="flex items-center justify-between">
+        <div className="flex shrink-0 items-center justify-between">
           <h2 className="text-base font-bold text-stone-800">設定</h2>
           <button
             type="button"
