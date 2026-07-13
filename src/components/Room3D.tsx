@@ -97,6 +97,307 @@ function RoomMesh({
   );
 }
 
+// 色を明暗調整（f<1で暗く、f>1で明るく）。脚や引き出し面の陰影に使う。
+function shade(hex: string, f: number): string {
+  const c = new THREE.Color(hex);
+  c.r = Math.min(1, c.r * f);
+  c.g = Math.min(1, c.g * f);
+  c.b = Math.min(1, c.b * f);
+  return `#${c.getHexString()}`;
+}
+
+// 家具モデルを構成する直方体パーツ1個。原点は家具の底面中心、yは上向き。
+function Box({
+  args,
+  pos,
+  color,
+  opacity,
+}: {
+  args: [number, number, number];
+  pos: [number, number, number];
+  color: string;
+  opacity: number;
+}) {
+  return (
+    <mesh position={pos}>
+      <boxGeometry args={args} />
+      <meshStandardMaterial color={color} transparent={opacity < 1} opacity={opacity} />
+    </mesh>
+  );
+}
+
+type ModelProps = { w: number; d: number; color: string; op: number };
+
+// 天板＋4本脚のテーブル（ダイニング/ロー兼用）。奥行方向(-z)を背面とする。
+function TableModel({ w, d, color, op, topH }: ModelProps & { topH: number }) {
+  const legC = shade(color, 0.7);
+  const topThick = 0.05;
+  const lt = 0.05;
+  const legH = topH - topThick;
+  const lx = w / 2 - lt / 2 - 0.03;
+  const lz = d / 2 - lt / 2 - 0.03;
+  return (
+    <group>
+      <Box args={[lt, legH, lt]} pos={[lx, legH / 2, lz]} color={legC} opacity={op} />
+      <Box args={[lt, legH, lt]} pos={[-lx, legH / 2, lz]} color={legC} opacity={op} />
+      <Box args={[lt, legH, lt]} pos={[lx, legH / 2, -lz]} color={legC} opacity={op} />
+      <Box args={[lt, legH, lt]} pos={[-lx, legH / 2, -lz]} color={legC} opacity={op} />
+      <Box args={[w, topThick, d]} pos={[0, topH - topThick / 2, 0]} color={color} opacity={op} />
+    </group>
+  );
+}
+
+// 座面＋背もたれ＋4本脚の椅子。-z側を背面とする。
+function ChairModel({ w, d, color, op }: ModelProps) {
+  const legC = shade(color, 0.6);
+  const seatTop = 0.42;
+  const seatThick = 0.05;
+  const backTop = 0.85;
+  const lt = 0.04;
+  const legH = seatTop - seatThick;
+  const lx = w / 2 - lt / 2 - 0.02;
+  const lz = d / 2 - lt / 2 - 0.02;
+  return (
+    <group>
+      <Box args={[lt, legH, lt]} pos={[lx, legH / 2, lz]} color={legC} opacity={op} />
+      <Box args={[lt, legH, lt]} pos={[-lx, legH / 2, lz]} color={legC} opacity={op} />
+      <Box args={[lt, legH, lt]} pos={[lx, legH / 2, -lz]} color={legC} opacity={op} />
+      <Box args={[lt, legH, lt]} pos={[-lx, legH / 2, -lz]} color={legC} opacity={op} />
+      <Box args={[w, seatThick, d]} pos={[0, seatTop - seatThick / 2, 0]} color={color} opacity={op} />
+      <Box
+        args={[w, backTop - seatTop, lt]}
+        pos={[0, (seatTop + backTop) / 2, -d / 2 + lt / 2]}
+        color={color}
+        opacity={op}
+      />
+    </group>
+  );
+}
+
+// 座面クッション＋背もたれ＋肘掛けのソファ。-z側を背面とする。
+function SofaModel({ w, d, color, op }: ModelProps) {
+  const arm = Math.min(0.15, w * 0.15);
+  const backT = Math.min(0.15, d * 0.22);
+  const baseH = 0.12;
+  const seatH = 0.35;
+  const backTop = 0.7;
+  const armTop = 0.55;
+  const cushC = shade(color, 1.08);
+  return (
+    <group>
+      <Box args={[w, baseH, d]} pos={[0, baseH / 2, 0]} color={shade(color, 0.85)} opacity={op} />
+      <Box
+        args={[w, backTop - baseH, backT]}
+        pos={[0, (baseH + backTop) / 2, -d / 2 + backT / 2]}
+        color={color}
+        opacity={op}
+      />
+      <Box
+        args={[arm, armTop - baseH, d]}
+        pos={[w / 2 - arm / 2, (baseH + armTop) / 2, 0]}
+        color={color}
+        opacity={op}
+      />
+      <Box
+        args={[arm, armTop - baseH, d]}
+        pos={[-w / 2 + arm / 2, (baseH + armTop) / 2, 0]}
+        color={color}
+        opacity={op}
+      />
+      <Box
+        args={[w - 2 * arm, seatH - baseH, d - backT]}
+        pos={[0, (baseH + seatH) / 2, backT / 2]}
+        color={cushC}
+        opacity={op}
+      />
+    </group>
+  );
+}
+
+// フレーム＋マットレス＋ヘッドボード＋枕のベッド。-z側（短辺）を頭側とする。
+function BedModel({ w, d, color, op }: ModelProps) {
+  const headT = Math.min(0.1, d * 0.06);
+  const baseH = 0.25;
+  const mattH = 0.18;
+  const headTop = 0.75;
+  const pillowD = Math.min(0.35, d * 0.18);
+  return (
+    <group>
+      <Box args={[w, baseH, d]} pos={[0, baseH / 2, 0]} color={shade(color, 0.7)} opacity={op} />
+      <Box
+        args={[w - 0.06, mattH, d - headT]}
+        pos={[0, baseH + mattH / 2, headT / 2]}
+        color={shade(color, 1.12)}
+        opacity={op}
+      />
+      <Box
+        args={[w, headTop, headT]}
+        pos={[0, headTop / 2, -d / 2 + headT / 2]}
+        color={color}
+        opacity={op}
+      />
+      <Box
+        args={[w - 0.2, 0.08, pillowD]}
+        pos={[0, baseH + mattH + 0.04, -d / 2 + headT + pillowD / 2 + 0.05]}
+        color={shade(color, 1.2)}
+        opacity={op}
+      />
+    </group>
+  );
+}
+
+// 天板＋脚＋背面幕板のデスク。-z側を背面とする。
+function DeskModel({ w, d, color, op, topH }: ModelProps & { topH: number }) {
+  const legC = shade(color, 0.7);
+  const topThick = 0.04;
+  const lt = 0.05;
+  const legH = topH - topThick;
+  const lx = w / 2 - lt / 2 - 0.02;
+  const lz = d / 2 - lt / 2 - 0.02;
+  return (
+    <group>
+      <Box args={[lt, legH, lt]} pos={[lx, legH / 2, lz]} color={legC} opacity={op} />
+      <Box args={[lt, legH, lt]} pos={[-lx, legH / 2, lz]} color={legC} opacity={op} />
+      <Box args={[lt, legH, lt]} pos={[lx, legH / 2, -lz]} color={legC} opacity={op} />
+      <Box args={[lt, legH, lt]} pos={[-lx, legH / 2, -lz]} color={legC} opacity={op} />
+      <Box args={[w, topThick, d]} pos={[0, topH - topThick / 2, 0]} color={color} opacity={op} />
+      <Box
+        args={[w - 0.1, legH * 0.6, 0.02]}
+        pos={[0, legH * 0.55, -d / 2 + 0.03]}
+        color={shade(color, 0.9)}
+        opacity={op}
+      />
+    </group>
+  );
+}
+
+// 側板・天地・背板・棚板で組んだオープン本棚。
+function ShelfModel({ w, d, color, op, height }: ModelProps & { height: number }) {
+  const t = 0.03;
+  const frame = shade(color, 0.92);
+  const innerH = height - 2 * t;
+  const shelfCount = Math.max(2, Math.round(height / 0.4));
+  const shelves = [];
+  for (let k = 1; k <= shelfCount; k++) {
+    const y = t + (innerH * k) / (shelfCount + 1);
+    shelves.push(
+      <Box
+        key={`sh-${k}`}
+        args={[w - 2 * t, t, d - t]}
+        pos={[0, y, t / 2]}
+        color={frame}
+        opacity={op}
+      />
+    );
+  }
+  return (
+    <group>
+      <Box args={[t, height, d]} pos={[w / 2 - t / 2, height / 2, 0]} color={frame} opacity={op} />
+      <Box args={[t, height, d]} pos={[-w / 2 + t / 2, height / 2, 0]} color={frame} opacity={op} />
+      <Box args={[w, t, d]} pos={[0, height - t / 2, 0]} color={frame} opacity={op} />
+      <Box args={[w, t, d]} pos={[0, t / 2, 0]} color={frame} opacity={op} />
+      <Box args={[w, height, t]} pos={[0, height / 2, -d / 2 + t / 2]} color={shade(color, 0.8)} opacity={op} />
+      {shelves}
+    </group>
+  );
+}
+
+// 引き出し面と取手で表現したチェスト。+z側を前面とする。
+function ChestModel({ w, d, color, op, height }: ModelProps & { height: number }) {
+  const drawers = Math.max(2, Math.round(height / 0.25));
+  const gap = 0.01;
+  const dh = (height - gap * (drawers + 1)) / drawers;
+  const handleC = shade(color, 0.55);
+  const frontC = shade(color, 1.06);
+  const fronts = [];
+  for (let k = 0; k < drawers; k++) {
+    const y = gap + dh / 2 + k * (dh + gap);
+    fronts.push(
+      <group key={`dr-${k}`}>
+        <Box args={[w - 0.04, dh, 0.02]} pos={[0, y, d / 2]} color={frontC} opacity={op} />
+        <Box args={[w * 0.2, 0.02, 0.03]} pos={[0, y, d / 2 + 0.02]} color={handleC} opacity={op} />
+      </group>
+    );
+  }
+  return (
+    <group>
+      <Box args={[w, height, d]} pos={[0, height / 2, 0]} color={color} opacity={op} />
+      {fronts}
+    </group>
+  );
+}
+
+// 本体＋扉の合わせ目＋取手のワードローブ。+z側を前面とする。
+function WardrobeModel({ w, d, color, op, height }: ModelProps & { height: number }) {
+  const handleC = shade(color, 0.55);
+  return (
+    <group>
+      <Box args={[w, height, d]} pos={[0, height / 2, 0]} color={color} opacity={op} />
+      <Box args={[0.02, height - 0.04, 0.02]} pos={[0, height / 2, d / 2]} color={shade(color, 0.8)} opacity={op} />
+      <Box args={[0.03, 0.18, 0.03]} pos={[-0.06, height / 2, d / 2 + 0.015]} color={handleC} opacity={op} />
+      <Box args={[0.03, 0.18, 0.03]} pos={[0.06, height / 2, d / 2 + 0.015]} color={handleC} opacity={op} />
+    </group>
+  );
+}
+
+// 脚付きの低いキャビネットとして描くテレビ台。+z側を前面とする。
+function TvStandModel({ w, d, color, op }: ModelProps) {
+  const bodyBot = 0.06;
+  const bodyTop = 0.42;
+  const legC = shade(color, 0.6);
+  const lt = 0.04;
+  const lx = w / 2 - lt / 2 - 0.02;
+  const lz = d / 2 - lt / 2 - 0.02;
+  return (
+    <group>
+      <Box args={[lt, bodyBot, lt]} pos={[lx, bodyBot / 2, lz]} color={legC} opacity={op} />
+      <Box args={[lt, bodyBot, lt]} pos={[-lx, bodyBot / 2, lz]} color={legC} opacity={op} />
+      <Box args={[lt, bodyBot, lt]} pos={[lx, bodyBot / 2, -lz]} color={legC} opacity={op} />
+      <Box args={[lt, bodyBot, lt]} pos={[-lx, bodyBot / 2, -lz]} color={legC} opacity={op} />
+      <Box args={[w, bodyTop - bodyBot, d]} pos={[0, (bodyBot + bodyTop) / 2, 0]} color={color} opacity={op} />
+      <Box
+        args={[0.02, bodyTop - bodyBot - 0.04, 0.02]}
+        pos={[0, (bodyBot + bodyTop) / 2, d / 2]}
+        color={shade(color, 0.8)}
+        opacity={op}
+      />
+    </group>
+  );
+}
+
+// 種類ごとに適切な立体モデルを選ぶ。未登録は従来どおり直方体で描く。
+function FurnitureModel({ it, color, op }: { it: PlacedItem; color: string; op: number }) {
+  const w = it.widthCm * M;
+  const d = it.depthCm * M;
+  const p = { w, d, color, op };
+  switch (it.type) {
+    case "チェア":
+      return <ChairModel {...p} />;
+    case "ソファ":
+      return <SofaModel {...p} />;
+    case "ダイニングテーブル":
+      return <TableModel {...p} topH={0.72} />;
+    case "ローテーブル":
+      return <TableModel {...p} topH={0.38} />;
+    case "デスク":
+      return <DeskModel {...p} topH={0.72} />;
+    case "ベッド":
+      return <BedModel {...p} />;
+    case "本棚":
+      return <ShelfModel {...p} height={1.6} />;
+    case "テレビ台":
+      return <TvStandModel {...p} />;
+    case "チェスト":
+      return <ChestModel {...p} height={0.8} />;
+    case "ワードローブ":
+      return <WardrobeModel {...p} height={1.9} />;
+    default: {
+      const h = heightForType(it.type);
+      return <Box args={[w, h, d]} pos={[0, h / 2, 0]} color={color} opacity={op} />;
+    }
+  }
+}
+
 function Furniture3D({
   items,
   roomWcm,
@@ -109,21 +410,16 @@ function Furniture3D({
   return (
     <>
       {items.map((it, i) => {
-        const h = heightForType(it.type);
         const color = it.owned
           ? "#9ca3af"
           : FURNITURE_PALETTE[i % FURNITURE_PALETTE.length].fill;
+        const op = it.owned ? 0.6 : 1;
         const px = (it.xCm + it.widthCm / 2 - roomWcm / 2) * M;
         const pz = (it.yCm + it.depthCm / 2 - roomDcm / 2) * M;
         return (
-          <mesh key={it.uid} position={[px, h / 2, pz]}>
-            <boxGeometry args={[it.widthCm * M, h, it.depthCm * M]} />
-            <meshStandardMaterial
-              color={color}
-              transparent={it.owned}
-              opacity={it.owned ? 0.6 : 1}
-            />
-          </mesh>
+          <group key={it.uid} position={[px, 0, pz]}>
+            <FurnitureModel it={it} color={color} op={op} />
+          </group>
         );
       })}
     </>
