@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { extractRoomContour, contourToRoomPoints } from "./floorplanScan";
+import { extractRoomPlan, contourToRoomPoints } from "./floorplanScan";
 import type { RoomShape } from "./roomShape";
 
 type FloorPlanScanPanelProps = {
@@ -40,14 +40,17 @@ export default function FloorPlanScanPanel({ roomSize, onDetect }: FloorPlanScan
       ctx.drawImage(bitmap, 0, 0, w, h);
       const img = ctx.getImageData(0, 0, w, h);
       setStatus("輪郭を解析中...");
-      const contour = extractRoomContour(img.data, w, h);
-      if (!contour || contour.length < 3) {
+      const plan = extractRoomPlan(img.data, w, h);
+      if (!plan || plan.contour.length < 3) {
         setStatus("部屋の輪郭を検出できませんでした。枠がはっきり写った画像でお試しください。");
         return;
       }
-      const points = contourToRoomPoints(contour, roomSize.widthCm, roomSize.depthCm);
-      onDetect({ kind: "poly", points });
-      setStatus(`取り込み完了（頂点${points.length}個）。全体サイズは「部屋のサイズ」で調整できます。`);
+      const points = contourToRoomPoints(plan.contour, roomSize.widthCm, roomSize.depthCm);
+      onDetect({ kind: "poly", points, walls: plan.walls });
+      const wallNote = plan.walls.length > 0 ? `・間仕切り${plan.walls.length}箇所` : "";
+      setStatus(
+        `取り込み完了（頂点${points.length}個${wallNote}）。全体サイズは「部屋のサイズ」で調整できます。`
+      );
     } catch {
       setStatus("画像の読み込みに失敗しました。");
     } finally {

@@ -8,9 +8,14 @@ export type RoomShape =
   | { kind: "rect" }
   | { kind: "L"; corner: RoomCorner; cutWidthCm: number; cutDepthCm: number }
   // 間取り図スキャン等で取り込んだ任意の多角形。points は外接矩形(0..w, 0..d)内のcm座標。
-  | { kind: "poly"; points: PolyPoint[] };
+  // walls は内部の壁・間仕切り（障害物）。外接矩形基準の 0..1 正規化矩形で保持し、
+  // 部屋サイズが変わっても比率で追従する。
+  | { kind: "poly"; points: PolyPoint[]; walls?: NormRect[] };
 
 export type PolyPoint = { xCm: number; yCm: number };
+
+// 外接矩形(0..1)を基準にした正規化矩形。間取りスキャンの間仕切り保持に使う。
+export type NormRect = { x: number; y: number; w: number; h: number };
 
 export type BlockRect = { xCm: number; yCm: number; widthCm: number; depthCm: number };
 
@@ -154,6 +159,17 @@ export function roomBlockedRects(shape: RoomShape, w: number, d: number): BlockR
         });
         runStart = -1;
       }
+    }
+  }
+
+  // 内部の壁・間仕切り（正規化矩形）を部屋サイズに合わせて障害物に加える。
+  if (shape.walls) {
+    for (const wl of shape.walls) {
+      const xCm = Math.min(Math.max(wl.x, 0), 1) * w;
+      const yCm = Math.min(Math.max(wl.y, 0), 1) * d;
+      const wCm = Math.max(0, Math.min(wl.w, 1 - wl.x)) * w;
+      const dCm = Math.max(0, Math.min(wl.h, 1 - wl.y)) * d;
+      if (wCm > 0 && dCm > 0) rects.push({ xCm, yCm, widthCm: wCm, depthCm: dCm });
     }
   }
   return rects;

@@ -1,8 +1,16 @@
-// 間取り図画像から部屋の輪郭（多角形）を自動抽出する。
-// ライブラリを使わず、二値化 → 外側の塗りつぶし → 最大領域の輪郭トレース →
-// 多角形の簡略化、という流れでブラウザ内だけで処理する。
+// 間取り図画像から部屋の外形（多角形）と内部の壁・間仕切り（障害物）を抽出する。
+// ライブラリを使わず、二値化 → 外側の塗りつぶし → 建物領域 → 粗い格子での占有判定、
+// という流れでブラウザ内だけで処理する。細かいノイズ（文字・寸法線・家具記号）は
+// 粗い格子に吸収させ、斜め線を作らない大まかな直交形状として読み取る。
+
+import type { NormRect } from "./roomShape";
 
 export type Pt = { x: number; y: number };
+
+export type RoomPlan = {
+  contour: Pt[]; // 外形（格子座標の直交多角形）
+  walls: NormRect[]; // 内部の壁・間仕切り（外接矩形基準の 0..1 正規化矩形）
+};
 
 // RGBA配列をグレースケール(0-255)に変換
 function toGray(data: Uint8ClampedArray, w: number, h: number): Uint8Array {
@@ -83,11 +91,41 @@ function largestComponent(region: Uint8Array, w: number, h: number): Uint8Array 
   return mask;
 }
 
+// 画像の外周から open(明るい=室外/室内空間) を伝って「外側(室外)」を塗りつぶす。
+function floodExterior(open: Uint8Array, width: number, height: number): Uint8Array {
+  const exterior = new Uint8Array(width * height);
+  const stack: number[] = [];
+  const pushIf = (x: number, y: number) => {
+    const i = y * width + x;
+    if (open[i] && !exterior[i]) {
+      exterior[i] = 1;
+      stack.push(i);
+    }
+  };
+  for (let x = 0; x < width; x++) {
+    pushIf(x, 0);
+    pushIf(x, height - 1);
+  }
+  for (let y = 0; y < height; y++) {
+    pushIf(0, y);
+    pushIf(width - 1, y);
+  }
+  while (stack.length) {
+    const cur = stack.pop() as number;
+    const x = cur % width;
+    const y = (cur - x) / width;
+    if (x + 1 < width) pushIf(x + 1, y);
+    if (x - 1 >= 0) pushIf(x - 1, y);
+    if (y + 1 < height) pushIf(x, y + 1);
+    if (y - 1 >= 0) pushIf(x, y - 1);
+  }
+  return exterior;
+}
+
 // マスク(セル=1)の境界を格子辺として集め、閉ループ（多角形）に組み立てる。
-// 外側境界（bboxが最大のループ）を返す。
+// bboxが最大のループ（外側境界）を返す。
 function traceOuterPolygon(mask: Uint8Array, w: number, h: number): Pt[] | null {
   const vid = (x: number, y: number) => y * (w + 1) + x;
-  // 頂点ごとの隣接（無向辺）。degール2前提で組み立てる。
   const adj = new Map<number, number[]>();
   const addEdge = (ax: number, ay: number, bx: number, by: number) => {
     const a = vid(ax, ay);
@@ -111,7 +149,6 @@ function traceOuterPolygon(mask: Uint8Array, w: number, h: number): Pt[] | null 
 
   const toPt = (id: number): Pt => ({ x: id % (w + 1), y: Math.floor(id / (w + 1)) });
 
-  // 全ループを抽出し、bbox面積が最大のものを外側境界とする
   const usedEdge = new Set<string>();
   const ekey = (a: number, b: number) => (a < b ? `${a}_${b}` : `${b}_${a}`);
   let bestLoop: Pt[] | null = null;
@@ -133,7 +170,6 @@ function traceOuterPolygon(mask: Uint8Array, w: number, h: number): Pt[] | null 
           ok = false;
           break;
         }
-        // prev以外で未使用の辺へ進む
         let nextId = -1;
         for (const n of nbrs) {
           if (n === prev) continue;
@@ -190,122 +226,125 @@ function dropCollinear(pts: Pt[]): Pt[] {
   return out.length >= 3 ? out : pts;
 }
 
-// 多角形の面積（絶対値）。ほぼ矩形かどうかの判定に使う。
-function polyArea(pts: Pt[]): number {
-  let a = 0;
-  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
-    a += (pts[j].x + pts[i].x) * (pts[j].y - pts[i].y);
-  }
-  return Math.abs(a) / 2;
-}
+const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 
-// 直交多角形を格子に量子化して「大まか」にする。
-// x・yを独立に丸めるので水平・垂直の辺は保たれ、斜め線を作らない。
-// 小さな凹凸（ドア・寸法線・文字など）は同じ格子に潰れて消える。
-function quantizeRectilinear(pts: Pt[], q: number, ox: number, oy: number): Pt[] {
-  if (q <= 0) return pts;
-  const snap = (v: number, o: number) => Math.round((v - o) / q) * q + o;
-  const snapped = pts.map((p) => ({ x: snap(p.x, ox), y: snap(p.y, oy) }));
-  // 連続する重複点を除去
-  const dedup: Pt[] = [];
-  for (const p of snapped) {
-    const last = dedup[dedup.length - 1];
-    if (!last || last.x !== p.x || last.y !== p.y) dedup.push(p);
-  }
-  // 先頭と末尾が同一点なら閉じているとみなして末尾を落とす
-  while (
-    dedup.length > 1 &&
-    dedup[0].x === dedup[dedup.length - 1].x &&
-    dedup[0].y === dedup[dedup.length - 1].y
-  ) {
-    dedup.pop();
-  }
-  return dropCollinear(dedup);
-}
+// 短辺あたりの目標セル数（大きいほど細かい）。ノイズを吸収しつつ形は保つ粗さ。
+const SHORT_CELLS = 30;
+// セル内の暗い画素の割合がこれを超えたら壁（間仕切り）とみなす。
+const WALL_FRAC = 0.16;
 
-// 画像データから部屋の輪郭多角形（画素座標）を返す。失敗時 null。
-export function extractRoomContour(
+// 画像データから部屋の外形と内部の壁を抽出する。失敗時 null。
+export function extractRoomPlan(
   data: Uint8ClampedArray,
   width: number,
   height: number
-): Pt[] | null {
-  if (width < 4 || height < 4) return null;
+): RoomPlan | null {
+  if (width < 8 || height < 8) return null;
   const gray = toGray(data, width, height);
   const thr = otsuThreshold(gray);
-  // 明るい(=室内/背景)を open とする
+  // 明るい(=室内空間/背景)を open、暗い(=壁・線)を wall とする
   const open = new Uint8Array(width * height);
   for (let i = 0; i < gray.length; i++) open[i] = gray[i] > thr ? 1 : 0;
 
-  // 画像の外周から open を伝って外側を塗りつぶす
-  const exterior = new Uint8Array(width * height);
-  const stack: number[] = [];
-  const pushIf = (x: number, y: number) => {
-    const i = y * width + x;
-    if (open[i] && !exterior[i]) {
-      exterior[i] = 1;
-      stack.push(i);
-    }
-  };
-  for (let x = 0; x < width; x++) {
-    pushIf(x, 0);
-    pushIf(x, height - 1);
-  }
-  for (let y = 0; y < height; y++) {
-    pushIf(0, y);
-    pushIf(width - 1, y);
-  }
-  while (stack.length) {
-    const cur = stack.pop() as number;
-    const x = cur % width;
-    const y = (cur - x) / width;
-    if (x + 1 < width) pushIf(x + 1, y);
-    if (x - 1 >= 0) pushIf(x - 1, y);
-    if (y + 1 < height) pushIf(x, y + 1);
-    if (y - 1 >= 0) pushIf(x, y - 1);
-  }
+  const exterior = floodExterior(open, width, height);
 
-  // 外側でない画素＝建物（壁＋室内）。その最大連結成分を部屋とみなす。
+  // 外側でない画素＝建物（壁＋室内空間）。その最大連結成分を部屋（フットプリント）とみなす。
   const region = new Uint8Array(width * height);
   for (let i = 0; i < region.length; i++) region[i] = exterior[i] ? 0 : 1;
   const mask = largestComponent(region, width, height);
   if (!mask) return null;
 
-  const raw = traceOuterPolygon(mask, width, height);
-  if (!raw || raw.length < 3) return null;
-
-  // 外接矩形（部屋の大きさの基準）
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-  for (const p of raw) {
-    if (p.x < minX) minX = p.x;
-    if (p.y < minY) minY = p.y;
-    if (p.x > maxX) maxX = p.x;
-    if (p.y > maxY) maxY = p.y;
+  // フットプリントの外接矩形
+  let minX = width;
+  let minY = height;
+  let maxX = 0;
+  let maxY = 0;
+  let any = false;
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      if (!mask[y * width + x]) continue;
+      any = true;
+      if (x < minX) minX = x;
+      if (y < minY) minY = y;
+      if (x > maxX) maxX = x;
+      if (y > maxY) maxY = y;
+    }
   }
-  const bw = maxX - minX;
-  const bh = maxY - minY;
-  if (bw < 4 || bh < 4) return null;
+  if (!any) return null;
+  const fw = maxX - minX + 1;
+  const fh = maxY - minY + 1;
+  if (fw < 8 || fh < 8) return null;
 
-  // 短辺の約6%を単位に量子化し、大まかな直交多角形にする（斜め線は作らない）。
-  const q = Math.max(3, Math.min(bw, bh) * 0.06);
-  const simplified = quantizeRectilinear(dropCollinear(raw), q, minX, minY);
-
-  // ほぼ長方形なら長方形に丸める（大づかみを優先し、微細なノイズは無視）。
-  const ratio = polyArea(simplified) / (bw * bh || 1);
-  if (simplified.length < 4 || ratio > 0.92) {
-    return [
-      { x: minX, y: minY },
-      { x: maxX, y: minY },
-      { x: maxX, y: maxY },
-      { x: minX, y: maxY },
-    ];
+  // 粗い格子（列N×行M）を張り、各セルの「内側率」「暗さ率」を集計する。
+  const cell = Math.max(4, Math.floor(Math.min(fw, fh) / SHORT_CELLS));
+  const N = Math.max(2, Math.round(fw / cell));
+  const Mrows = Math.max(2, Math.round(fh / cell));
+  const inside = new Int32Array(N * Mrows);
+  const dark = new Int32Array(N * Mrows);
+  const total = new Int32Array(N * Mrows);
+  for (let y = minY; y <= maxY; y++) {
+    const gr = Math.min(Mrows - 1, Math.floor(((y - minY) / fh) * Mrows));
+    for (let x = minX; x <= maxX; x++) {
+      const gc = Math.min(N - 1, Math.floor(((x - minX) / fw) * N));
+      const ci = gr * N + gc;
+      const idx = y * width + x;
+      total[ci]++;
+      if (mask[idx]) inside[ci]++;
+      if (!open[idx]) dark[ci]++;
+    }
   }
-  return simplified.length >= 3 ? simplified : null;
+
+  // 内側率0.5以上のセルを占有（部屋）とする → 大まかな直交フットプリント。
+  const occ = new Uint8Array(N * Mrows);
+  for (let i = 0; i < occ.length; i++) {
+    occ[i] = total[i] > 0 && inside[i] / total[i] >= 0.5 ? 1 : 0;
+  }
+  const occMask = largestComponent(occ, N, Mrows);
+  if (!occMask) return null;
+
+  const rawContour = traceOuterPolygon(occMask, N, Mrows);
+  if (!rawContour || rawContour.length < 4) return null;
+  const contour = dropCollinear(rawContour);
+
+  // 外形の外接矩形（格子座標）。壁矩形の正規化に使う。
+  let cminX = Infinity;
+  let cminY = Infinity;
+  let cmaxX = -Infinity;
+  let cmaxY = -Infinity;
+  for (const p of contour) {
+    if (p.x < cminX) cminX = p.x;
+    if (p.y < cminY) cminY = p.y;
+    if (p.x > cmaxX) cmaxX = p.x;
+    if (p.y > cmaxY) cmaxY = p.y;
+  }
+  const bw = cmaxX - cminX || 1;
+  const bh = cmaxY - cminY || 1;
+
+  // 占有セルのうち暗さ率が高いものを壁（間仕切り）とし、行ごとに水平連結して矩形化。
+  const walls: NormRect[] = [];
+  for (let r = 0; r < Mrows; r++) {
+    let runStart = -1;
+    for (let c = 0; c <= N; c++) {
+      const ci = r * N + c;
+      const isWall =
+        c < N && occMask[ci] === 1 && total[ci] > 0 && dark[ci] / total[ci] >= WALL_FRAC;
+      if (isWall && runStart < 0) {
+        runStart = c;
+      } else if (!isWall && runStart >= 0) {
+        const x0 = clamp01((runStart - cminX) / bw);
+        const y0 = clamp01((r - cminY) / bh);
+        const x1 = clamp01((c - cminX) / bw);
+        const y1 = clamp01((r + 1 - cminY) / bh);
+        if (x1 > x0 && y1 > y0) walls.push({ x: x0, y: y0, w: x1 - x0, h: y1 - y0 });
+        runStart = -1;
+      }
+    }
+  }
+
+  return { contour, walls };
 }
 
-// 画素座標の多角形を、外接矩形(0..wCm, 0..dCm)内のcm座標に正規化する。
+// 画素/格子座標の多角形を、外接矩形(0..wCm, 0..dCm)内のcm座標に正規化する。
 export function contourToRoomPoints(
   contour: Pt[],
   widthCm: number,
