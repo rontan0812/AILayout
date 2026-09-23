@@ -190,50 +190,37 @@ function dropCollinear(pts: Pt[]): Pt[] {
   return out.length >= 3 ? out : pts;
 }
 
-// Douglas-Peucker（開いた点列用）
-function rdp(pts: Pt[], eps: number): Pt[] {
-  if (pts.length < 3) return pts;
-  let maxD = -1;
-  let idx = -1;
-  const a = pts[0];
-  const b = pts[pts.length - 1];
-  const dx = b.x - a.x;
-  const dy = b.y - a.y;
-  const len = Math.hypot(dx, dy) || 1;
-  for (let i = 1; i < pts.length - 1; i++) {
-    const p = pts[i];
-    const d = Math.abs((p.x - a.x) * dy - (p.y - a.y) * dx) / len;
-    if (d > maxD) {
-      maxD = d;
-      idx = i;
-    }
+// 多角形の面積（絶対値）。ほぼ矩形かどうかの判定に使う。
+function polyArea(pts: Pt[]): number {
+  let a = 0;
+  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+    a += (pts[j].x + pts[i].x) * (pts[j].y - pts[i].y);
   }
-  if (maxD > eps) {
-    const left = rdp(pts.slice(0, idx + 1), eps);
-    const right = rdp(pts.slice(idx), eps);
-    return left.slice(0, -1).concat(right);
-  }
-  return [a, b];
+  return Math.abs(a) / 2;
 }
 
-// 閉ループをDPで簡略化する。始点と、そこから最も遠い点の2箇所で
-// ループを2本の開いた線に割ってそれぞれRDPし、つなぎ直す（始終点が同一だとRDPが退化するため）。
-function simplifyClosed(pts: Pt[], eps: number): Pt[] {
-  if (pts.length < 4) return pts;
-  let far = 0;
-  let farD = -1;
-  for (let i = 1; i < pts.length; i++) {
-    const d = Math.hypot(pts[i].x - pts[0].x, pts[i].y - pts[0].y);
-    if (d > farD) {
-      farD = d;
-      far = i;
-    }
+// 直交多角形を格子に量子化して「大まか」にする。
+// x・yを独立に丸めるので水平・垂直の辺は保たれ、斜め線を作らない。
+// 小さな凹凸（ドア・寸法線・文字など）は同じ格子に潰れて消える。
+function quantizeRectilinear(pts: Pt[], q: number, ox: number, oy: number): Pt[] {
+  if (q <= 0) return pts;
+  const snap = (v: number, o: number) => Math.round((v - o) / q) * q + o;
+  const snapped = pts.map((p) => ({ x: snap(p.x, ox), y: snap(p.y, oy) }));
+  // 連続する重複点を除去
+  const dedup: Pt[] = [];
+  for (const p of snapped) {
+    const last = dedup[dedup.length - 1];
+    if (!last || last.x !== p.x || last.y !== p.y) dedup.push(p);
   }
-  const half1 = pts.slice(0, far + 1); // 始点 .. far
-  const half2 = pts.slice(far).concat([pts[0]]); // far .. 終点 .. 始点
-  const s1 = rdp(half1, eps);
-  const s2 = rdp(half2, eps);
-  return s1.slice(0, -1).concat(s2.slice(0, -1));
+  // 先頭と末尾が同一点なら閉じているとみなして末尾を落とす
+  while (
+    dedup.length > 1 &&
+    dedup[0].x === dedup[dedup.length - 1].x &&
+    dedup[0].y === dedup[dedup.length - 1].y
+  ) {
+    dedup.pop();
+  }
+  return dropCollinear(dedup);
 }
 
 // 画像データから部屋の輪郭多角形（画素座標）を返す。失敗時 null。
@@ -286,10 +273,36 @@ export function extractRoomContour(
   const raw = traceOuterPolygon(mask, width, height);
   if (!raw || raw.length < 3) return null;
 
-  const eps = Math.max(2, 0.01 * Math.hypot(width, height));
-  const simplified = simplifyClosed(dropCollinear(raw), eps);
-  const result = dropCollinear(simplified);
-  return result.length >= 3 ? result : null;
+  // 外接矩形（部屋の大きさの基準）
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const p of raw) {
+    if (p.x < minX) minX = p.x;
+    if (p.y < minY) minY = p.y;
+    if (p.x > maxX) maxX = p.x;
+    if (p.y > maxY) maxY = p.y;
+  }
+  const bw = maxX - minX;
+  const bh = maxY - minY;
+  if (bw < 4 || bh < 4) return null;
+
+  // 短辺の約6%を単位に量子化し、大まかな直交多角形にする（斜め線は作らない）。
+  const q = Math.max(3, Math.min(bw, bh) * 0.06);
+  const simplified = quantizeRectilinear(dropCollinear(raw), q, minX, minY);
+
+  // ほぼ長方形なら長方形に丸める（大づかみを優先し、微細なノイズは無視）。
+  const ratio = polyArea(simplified) / (bw * bh || 1);
+  if (simplified.length < 4 || ratio > 0.92) {
+    return [
+      { x: minX, y: minY },
+      { x: maxX, y: minY },
+      { x: maxX, y: maxY },
+      { x: minX, y: maxY },
+    ];
+  }
+  return simplified.length >= 3 ? simplified : null;
 }
 
 // 画素座標の多角形を、外接矩形(0..wCm, 0..dCm)内のcm座標に正規化する。
